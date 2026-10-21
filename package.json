@@ -1,0 +1,16 @@
+{
+  "name": "gun-and-parkour",
+  "version": "0.1.0",
+  "description": "Game platformer lực giật: Not Mario Because I Got A GUN (môn Algorithms & Data Structures)",
+  "private": true,
+  "type": "module",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "bench": "node bench/run.js"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
