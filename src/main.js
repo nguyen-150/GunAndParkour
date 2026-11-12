@@ -8,6 +8,7 @@ import { InputHandler } from './core/InputHandler.js';
 import { TileMap, TILE_SOLID } from './level/TileMap.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
 import { Player } from './entities/Player.js';
+import { castRay, createRayHit } from './physics/Raycast.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -39,6 +40,7 @@ const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
 const player = new Player(64, 100);
+const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
@@ -56,6 +58,34 @@ function drawTiles() {
   }
 }
 
+/** Draw the aim ray from the player's center toward the mouse, stopping at the first wall. */
+function drawAim() {
+  const ox = player.x + player.width / 2;
+  const oy = player.y + player.height / 2;
+  const dx = input.mouseX - ox;
+  const dy = input.mouseY - oy;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return; // mouse exactly on the player: no direction
+
+  const range = CONFIG.weapon.bulletMaxRange;
+  const hit = castRay(map, ox, oy, dx, dy, range, aimHit);
+  const dist = hit ? aimHit.distance : range;
+  const ex = ox + (dx / len) * dist;
+  const ey = oy + (dy / len) * dist;
+
+  ctx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ox, oy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+
+  if (hit) {
+    ctx.fillStyle = '#ff5050';
+    ctx.fillRect(ex - 3, ey - 3, 6, 6); // dot where the ray meets the wall
+  }
+}
+
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
   ctx.fillStyle = '#1c1f2b';
@@ -63,6 +93,7 @@ function render(alpha) {
 
   drawTiles();
   player.render(ctx, alpha);
+  drawAim();
 
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
