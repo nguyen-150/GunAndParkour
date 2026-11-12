@@ -4,6 +4,10 @@
 
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
+import { InputHandler } from './core/InputHandler.js';
+import { TileMap, TILE_SOLID } from './level/TileMap.js';
+import { CollisionSystem } from './physics/CollisionSystem.js';
+import { Player } from './entities/Player.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -12,65 +16,62 @@ const ctx = canvas.getContext('2d');
 canvas.width = CONFIG.screen.width;
 canvas.height = CONFIG.screen.height;
 
-/** Temporary smoke test: draws the tile grid and a title. Replaced by Game later. */
-function drawPlaceholder() {
-  const { width, height } = CONFIG.screen;
-  const tile = CONFIG.tileSize;
+// ---- Temporary test level (replaced by TmxLoader later) ----
+const COLS = CONFIG.screen.width / CONFIG.tileSize; // 30
+const ROWS = CONFIG.screen.height / CONFIG.tileSize; // 20
+const map = new TileMap(COLS, ROWS, CONFIG.tileSize);
 
-  ctx.fillStyle = '#1c1f2b';
-  ctx.fillRect(0, 0, width, height);
-
-  // Faint grid lines, one line per tile boundary.
-  ctx.strokeStyle = '#2a2f42';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = 0; x <= width; x += tile) {
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, height);
-  }
-  for (let y = 0; y <= height; y += tile) {
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(width, y + 0.5);
-  }
-  ctx.stroke();
-
-  ctx.fillStyle = '#f2f2f2';
-  ctx.font = '28px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Gun and PARKOUR', width / 2, height / 2 - 10);
-  ctx.font = '16px sans-serif';
-  ctx.fillText(
-    `Engine OK - grid ${width / tile} x ${height / tile} tiles`,
-    width / 2,
-    height / 2 + 24
-  );
+// Solid border around the whole map.
+for (let c = 0; c < COLS; c++) {
+  map.setTile(c, 0, TILE_SOLID);
+  map.setTile(c, ROWS - 1, TILE_SOLID);
 }
+for (let r = 0; r < ROWS; r++) {
+  map.setTile(0, r, TILE_SOLID);
+  map.setTile(COLS - 1, r, TILE_SOLID);
+}
+// Two floating platforms to look at (the player cannot reach them yet).
+for (let c = 6; c <= 11; c++) map.setTile(c, 14, TILE_SOLID);
+for (let c = 16; c <= 22; c++) map.setTile(c, 10, TILE_SOLID);
 
-// ---- Loop smoke test (temporary): a square bouncing left and right ----
-const box = { x: 100, prevX: 100, y: 300, size: 32, vx: 240 }; // vx in px/s
+// ---- Game objects ----
+const input = new InputHandler();
+input.attach(canvas);
+const collision = new CollisionSystem(map);
+const player = new Player(64, 100);
 
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
-  box.prevX = box.x; // remember the previous state for interpolation
-  box.x += box.vx * dt;
-  const maxX = CONFIG.screen.width - box.size;
-  if (box.x < 0 || box.x > maxX) {
-    box.vx = -box.vx;
-    box.x = Math.min(Math.max(box.x, 0), maxX);
+  player.update(dt, input, collision);
+}
+
+/** Draw every solid tile. Camera culling will replace this for big maps. */
+function drawTiles() {
+  const ts = map.tileSize;
+  ctx.fillStyle = '#5b6b8c';
+  for (let row = 0; row < map.height; row++) {
+    for (let col = 0; col < map.width; col++) {
+      if (map.isSolid(col, row)) ctx.fillRect(col * ts, row * ts, ts, ts);
+    }
   }
 }
 
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
-  drawPlaceholder();
-  const drawX = box.prevX + (box.x - box.prevX) * alpha; // interpolated position
-  ctx.fillStyle = '#ffcc33';
-  ctx.fillRect(drawX, box.y, box.size, box.size);
+  ctx.fillStyle = '#1c1f2b';
+  ctx.fillRect(0, 0, CONFIG.screen.width, CONFIG.screen.height);
+
+  drawTiles();
+  player.render(ctx, alpha);
 
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`update steps this frame: ${game.lastSteps}`, 12, 24);
+  ctx.fillText(
+    `onGround: ${player.onGround}   vx: ${player.vx.toFixed(0)}   vy: ${player.vy.toFixed(0)}`,
+    40,
+    52
+  );
 }
 
 const game = new Game({ update, render });
