@@ -49,16 +49,21 @@ export const CONFIG = {
     frictionAir: 120, // px/s^2, small air drag when no key is held
   },
 
-  // ---- Weapon (infinite ammo, 1-round magazine) ----
+  // ---- Weapon: shotgun, infinite ammo, 1-round magazine ----
   weapon: {
     reloadTime: 0.5, // s, time to chamber the next round after each shot
-    recoilImpulse: 650, // px/s, speed added to the player opposite to the barrel
-    bulletSpeed: 900, // px/s
-    bulletMaxRange: 1200, // px, bullet disappears beyond this distance
+    recoilImpulse: 650, // px/s, speed added to the player opposite to the barrel (once per shot)
+    pellets: 8, // rays fired per shot
+    spreadDegrees: 24, // total cone angle: pellets fly within +-12 degrees of the aim
+    range: 700, // px, how far a pellet ray travels
+    tracerLifetime: 0.12, // s, how long the visual streak stays on screen
+    bulletSpeed: 900, // legacy (single bullets), removed when the shotgun is wired in
+    bulletMaxRange: 1200, // legacy, still used by the aim line until main.js is updated
   },
 
   // ---- Object pools ----
   pools: {
-    bulletCount: 32, // bullets pre-allocated once, then reused
+    bulletCount: 32, // legacy, removed with bulletSpeed
+    tracerCount: 32, // visual streaks pre-allocated once, then reused (4 full shots)
   },
-};
+}
