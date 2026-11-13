@@ -18,15 +18,12 @@
       align-items: center;
       justify-content: center;
     }
-    /* Scale the canvas to fit the window while keeping the 3:2 ratio (960x640).
-       Logical drawing size stays 960x640; only the displayed size changes. */
+     /* Displayed size is set by resizeCanvas() in src/main.js,
+     so it fits the window without stretching. */
     #game {
       display: block;
       background: #1c1f2b;
       cursor: crosshair; /* aiming cursor */
-      aspect-ratio: 3 / 2;
-      width: min(100vw, 150vh); /* 150vh = 1.5 * viewport height */
-      height: auto;
     }
   </style>
 </head>
