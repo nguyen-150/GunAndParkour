@@ -8,17 +8,39 @@ import { InputHandler } from './core/InputHandler.js';
 import { TileMap, TILE_SOLID } from './level/TileMap.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
 import { Player } from './entities/Player.js';
+import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
+import { Camera } from './render/Camera.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// Size the canvas from the config so there is a single source of truth.
-canvas.width = CONFIG.screen.width;
-canvas.height = CONFIG.screen.height;
+// Fixed view height, view width follows the window aspect ratio (see Camera).
+const camera = new Camera(
+  CONFIG.screen.height,
+  CONFIG.camera.minViewWidth,
+  CONFIG.camera.maxViewWidth
+);
+
+/** Match canvas resolution to the camera view and fit it inside the window. */
+function resizeCanvas() {
+  camera.setWindowSize(window.innerWidth, window.innerHeight);
+  canvas.width = camera.viewWidth; // 1 canvas px = 1 world px
+  canvas.height = camera.viewHeight;
+
+  // Displayed size: as large as fits the window, same aspect ratio as the view.
+  const scale = Math.min(
+    window.innerWidth / camera.viewWidth,
+    window.innerHeight / camera.viewHeight
+  );
+  canvas.style.width = `${camera.viewWidth * scale}px`;
+  canvas.style.height = `${camera.viewHeight * scale}px`;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
 // ---- Temporary test level (replaced by TmxLoader later) ----
-const COLS = CONFIG.screen.width / CONFIG.tileSize; // 30
+const COLS = 60; // 1920 px wide: wider than the screen so the camera can scroll
 const ROWS = CONFIG.screen.height / CONFIG.tileSize; // 20
 const map = new TileMap(COLS, ROWS, CONFIG.tileSize);
 
@@ -31,6 +53,13 @@ for (let r = 0; r < ROWS; r++) {
   map.setTile(0, r, TILE_SOLID);
   map.setTile(COLS - 1, r, TILE_SOLID);
 }
+for (let c = 30; c <= 36; c++) map.setTile(c, 8, TILE_SOLID); // far platform
+
+// Thick floor: raise the ground so there is empty screen space below the
+// player to aim at when shooting downward.
+for (let r = 15; r < ROWS; r++) {
+  for (let c = 0; c < COLS; c++) map.setTile(c, r, TILE_SOLID);
+}
 // Two floating platforms to look at (the player cannot reach them yet).
 for (let c = 6; c <= 11; c++) map.setTile(c, 14, TILE_SOLID);
 for (let c = 16; c <= 22; c++) map.setTile(c, 10, TILE_SOLID);
@@ -40,10 +69,20 @@ const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
 const player = new Player(64, 100);
+const weapon = new Weapon();
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
+  weapon.update(dt);
+
+  // Fire before moving the player, so the recoil is applied in this very step.
+  if (input.mouseDown) {
+    const dx = camera.screenToWorldX(input.mouseX) - (player.x + player.width / 2);
+    const dy = camera.screenToWorldY(input.mouseY) - (player.y + player.height / 2);
+    weapon.fire(player, dx, dy);
+  }
+
   player.update(dt, input, collision);
 }
 
@@ -62,8 +101,8 @@ function drawTiles() {
 function drawAim() {
   const ox = player.x + player.width / 2;
   const oy = player.y + player.height / 2;
-  const dx = input.mouseX - ox;
-  const dy = input.mouseY - oy;
+  const dx = camera.screenToWorldX(input.mouseX) - ox;
+  const dy = camera.screenToWorldY(input.mouseY) - oy;
   const len = Math.hypot(dx, dy);
   if (len === 0) return; // mouse exactly on the player: no direction
 
@@ -88,13 +127,23 @@ function drawAim() {
 
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
-  ctx.fillStyle = '#1c1f2b';
-  ctx.fillRect(0, 0, CONFIG.screen.width, CONFIG.screen.height);
+  // Follow the interpolated player position so the camera does not jitter.
+  const px = player.prevX + (player.x - player.prevX) * alpha + player.width / 2;
+  const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
+  camera.follow(px, py, map.pixelWidth, map.pixelHeight);
 
+  ctx.fillStyle = '#1c1f2b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // World space: everything here is shifted by the camera position.
+  ctx.save();
+  ctx.translate(-camera.x, -camera.y);
   drawTiles();
   player.render(ctx, alpha);
   drawAim();
+  ctx.restore();
 
+  // Screen space: the HUD stays fixed on the screen.
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
   ctx.textAlign = 'left';
@@ -102,6 +151,11 @@ function render(alpha) {
     `onGround: ${player.onGround}   vx: ${player.vx.toFixed(0)}   vy: ${player.vy.toFixed(0)}`,
     40,
     52
+  );
+  ctx.fillText(
+    `weapon: ${weapon.state.name}   reload: ${weapon.reloadTimer.toFixed(2)}s`,
+    40,
+    72
   );
 }
 

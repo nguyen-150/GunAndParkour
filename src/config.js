@@ -15,6 +15,14 @@ export const CONFIG = {
   },
   tileSize: 32, // 960 / 32 = 30 columns, 640 / 32 = 20 rows
 
+    // ---- Camera ----
+  // Visible height is fixed at screen.height; the visible width follows the
+  // window aspect ratio but stays inside this range.
+  camera: {
+    minViewWidth: 960, // narrowest view (3:2 window or taller)
+    maxViewWidth: 1600, // widest view (stops ultrawide screens seeing too much)
+  },
+
   // ---- Game loop (fixed timestep) ----
   loop: {
     fixedStep: 1 / 60, // physics always advances in 1/60 s steps
