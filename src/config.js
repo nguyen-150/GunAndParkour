@@ -55,7 +55,7 @@ export const CONFIG = {
     recoilImpulse: 650, // px/s, speed added to the player opposite to the barrel (once per shot)
     pellets: 8, // rays fired per shot
     spreadDegrees: 24, // total cone angle: pellets fly within +-12 degrees of the aim
-    range: 700, // px, how far a pellet ray travels
+    range: 256, // px (8 tiles), shotgun is a close-range weapon
     tracerLifetime: 0.12, // s, how long the visual streak stays on screen
     bulletSpeed: 900, // legacy (single bullets), removed when the shotgun is wired in
     bulletMaxRange: 1200, // legacy, still used by the aim line until main.js is updated

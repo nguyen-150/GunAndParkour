@@ -11,6 +11,7 @@ import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
+import { TracerSystem } from './render/TracerSystem.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -69,12 +70,14 @@ const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
 const player = new Player(64, 100);
-const weapon = new Weapon();
+const tracers = new TracerSystem();
+const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
   weapon.update(dt);
+  tracers.update(dt);
 
   // Fire before moving the player, so the recoil is applied in this very step.
   if (input.mouseDown) {
@@ -106,7 +109,7 @@ function drawAim() {
   const len = Math.hypot(dx, dy);
   if (len === 0) return; // mouse exactly on the player: no direction
 
-  const range = CONFIG.weapon.bulletMaxRange;
+  const range = CONFIG.weapon.range;
   const hit = castRay(map, ox, oy, dx, dy, range, aimHit);
   const dist = hit ? aimHit.distance : range;
   const ex = ox + (dx / len) * dist;
@@ -140,6 +143,7 @@ function render(alpha) {
   ctx.translate(-camera.x, -camera.y);
   drawTiles();
   player.render(ctx, alpha);
+  tracers.render(ctx);
   drawAim();
   ctx.restore();
 
