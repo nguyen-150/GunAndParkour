@@ -12,6 +12,7 @@ import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
 import { TracerSystem } from './render/TracerSystem.js';
+import { TuningPanel } from './render/TuningPanel.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -163,5 +164,7 @@ function render(alpha) {
   );
 }
 
+const tuningPanel = new TuningPanel(); // remembers start-up values for the Reset button
+tuningPanel.mount(); // press P in the game to show or hide it
 const game = new Game({ update, render });
 game.start();
