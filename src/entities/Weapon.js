@@ -44,6 +44,12 @@ export class Weapon {
     this.state = next;
     next.enter(this);
   }
+  
+  /** Back to the freshly loaded state: round chambered, no countdown running. */
+  reset() {
+    this.reloadTimer = 0;
+    this.setState(this.ready);
+  }
 
   /** @returns {boolean} true when a shot can be fired right now. */
   get isReady() {
