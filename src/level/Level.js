@@ -21,13 +21,15 @@ export class Level {
    * @param {{firstGid:number, columns:number, imageSource:string}} tileset
    * @param {number} spawnX player feet x in px (middle of the feet)
    * @param {number} spawnY player feet y in px
+   * @param {Uint16Array|null} [hazards] optional lethal tile ids (spikes, abyss), same layout as gids
    */
-  constructor(tileMap, gids, tileset, spawnX, spawnY) {
+  constructor(tileMap, gids, tileset, spawnX, spawnY, hazards = null) {
     this.tileMap = tileMap;
     this.gids = gids;
     this.tileset = tileset;
     this.spawnX = spawnX;
     this.spawnY = spawnY;
+    this.hazards = hazards;
   }
 
   /**
@@ -57,7 +59,10 @@ export class Level {
       if (ground[i] !== 0) tileMap.tiles[i] = TILE_SOLID;
     }
 
-    return new Level(tileMap, ground, data.tileset, spawn.x, spawn.y);
+    // Optional layer: tiles here are lethal (spikes, abyss) but do not block movement.
+    const hazards = data.layers.Hazards ?? null;
+
+    return new Level(tileMap, ground, data.tileset, spawn.x, spawn.y, hazards);
   }
 
   /**
@@ -69,5 +74,18 @@ export class Level {
     const map = this.tileMap;
     if (!map.inBounds(col, row)) return 0;
     return this.gids[row * map.width + col];
+  }
+  
+  /**
+   * @param {number} col tile column
+   * @param {number} row tile row
+   * @returns {number} hazard tile id at (col, row); 0 if there is none, the map
+   *   has no Hazards layer, or the position is outside the map
+   */
+  getHazardGid(col, row) {
+    if (this.hazards === null) return 0;
+    const map = this.tileMap;
+    if (!map.inBounds(col, row)) return 0;
+    return this.hazards[row * map.width + col];
   }
 }
