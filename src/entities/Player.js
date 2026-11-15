@@ -3,6 +3,9 @@
 
 import { CONFIG } from '../config.js';
 
+/** Tolerance for floating-point drift when counting the respawn timer down. */
+const TIME_EPSILON = 1e-9;
+
 /**
  * Player character. Also a "body" for CollisionSystem (x, y, width, height, vx, vy).
  *
@@ -32,6 +35,10 @@ export class Player {
     this.onGround = false;
     this.hitWall = false;
     this.hitCeiling = false;
+    
+    // Death state: while dead the player ignores input, does not move and is not drawn.
+    this.dead = false;
+    this.respawnTimer = 0; // seconds left before the player may reappear
   }
 
   /**
@@ -43,8 +50,16 @@ export class Player {
   update(dt, input, collision) {
     this.prevX = this.x;
     this.prevY = this.y;
+    
+    if (this.dead) {
+      this.respawnTimer -= dt;
+      return; // dead: no input, no gravity, no movement
+    }
+
+    
 
     this.applyHorizontalControl(dt, input.getMoveAxis());
+    
 
     // Gravity, then clamp so the speed never exceeds what collision can handle.
     const phys = CONFIG.physics;
@@ -60,6 +75,44 @@ export class Player {
    * @param {number} dt
    * @param {number} axis -1 (left), 0 (none), 1 (right)
    */
+
+    /** @returns {boolean} true when the player is dead and the respawn delay is over */
+  get canRespawn() {
+    return this.dead && this.respawnTimer <= TIME_EPSILON;
+  }
+
+  /**
+   * Kill the player. Ignored if already dead, so touching two hazards in the
+   * same step cannot restart the countdown.
+   */
+  die() {
+    if (this.dead) return;
+    this.dead = true;
+    this.respawnTimer = CONFIG.player.respawnDelay;
+    this.vx = 0;
+    this.vy = 0;
+  }
+
+  /**
+   * Bring the player back, standing still, at a spawn point.
+   * @param {number} feetX x of the middle of the feet, in px
+   * @param {number} feetY y of the feet (bottom edge), in px
+   */
+  respawn(feetX, feetY) {
+    this.x = feetX - this.width / 2;
+    this.y = feetY - this.height;
+    // Reset the previous position too, or rendering would interpolate from the death spot.
+    this.prevX = this.x;
+    this.prevY = this.y;
+    this.vx = 0;
+    this.vy = 0;
+    this.onGround = false;
+    this.hitWall = false;
+    this.hitCeiling = false;
+    this.dead = false;
+    this.respawnTimer = 0;
+  }
+
   applyHorizontalControl(dt, axis) {
     const cfg = CONFIG.player;
 
@@ -85,6 +138,7 @@ export class Player {
    * @param {number} alpha fraction of a step left in the accumulator, [0, 1)
    */
   render(ctx, alpha) {
+    if (this.dead) return; // a dead player is not drawn
     const drawX = this.prevX + (this.x - this.prevX) * alpha;
     const drawY = this.prevY + (this.y - this.prevY) * alpha;
     ctx.fillStyle = '#ffcc33';
