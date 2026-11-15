@@ -58,6 +58,14 @@ export const CONFIG = {
     range: 256, // px (8 tiles), shotgun is a close-range weapon
     tracerLifetime: 0.08, // s, how long the visual streak stays on screen
   },
+    // ---- Hazards: lethal tiles from the Hazards layer ----
+  // Key = tile id (gid) in the tileset. The box is relative to the tile's
+  // top-left corner, in px. Spikes are smaller than their tile so the player
+  // dies on the spike tips, not for brushing past empty space around them.
+  hazards: {
+    3: { x: 4, y: 16, w: 24, h: 16 }, // spikes
+    4: { x: 0, y: 0, w: 32, h: 32 }, // abyss (bottom of a pit)
+  },
 
   // ---- Object pools ----
   pools: {
