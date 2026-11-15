@@ -5,7 +5,8 @@
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
 import { InputHandler } from './core/InputHandler.js';
-import { TileMap, TILE_SOLID } from './level/TileMap.js';
+import { Level } from './level/Level.js';
+import { TmxLoader } from './level/TmxLoader.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
 import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
@@ -13,6 +14,7 @@ import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
+
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -41,36 +43,40 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// ---- Temporary test level (replaced by TmxLoader later) ----
-const COLS = 60; // 1920 px wide: wider than the screen so the camera can scroll
-const ROWS = CONFIG.screen.height / CONFIG.tileSize; // 20
-const map = new TileMap(COLS, ROWS, CONFIG.tileSize);
+// ---- Level: load the map drawn in Tiled and its tileset image ----
+const LEVEL_URL = './assets/maps/level1.tmx';
 
-// Solid border around the whole map.
-for (let c = 0; c < COLS; c++) {
-  map.setTile(c, 0, TILE_SOLID);
-  map.setTile(c, ROWS - 1, TILE_SOLID);
+/** Load a .tmx map and the tileset image it points to. */
+async function loadLevel(url) {
+  const level = Level.fromTmx(await TmxLoader.load(url));
+  const image = new Image();
+  // The image path in the .tmx is relative to the .tmx file itself.
+  image.src = new URL(level.tileset.imageSource, new URL(url, document.baseURI)).href;
+  await image.decode();
+  return { level, image };
 }
-for (let r = 0; r < ROWS; r++) {
-  map.setTile(0, r, TILE_SOLID);
-  map.setTile(COLS - 1, r, TILE_SOLID);
-}
-for (let c = 30; c <= 36; c++) map.setTile(c, 8, TILE_SOLID); // far platform
 
-// Thick floor: raise the ground so there is empty screen space below the
-// player to aim at when shooting downward.
-for (let r = 15; r < ROWS; r++) {
-  for (let c = 0; c < COLS; c++) map.setTile(c, r, TILE_SOLID);
+let loaded;
+try {
+  loaded = await loadLevel(LEVEL_URL);
+} catch (err) {
+  ctx.fillStyle = '#ff6b6b';
+  ctx.font = '16px sans-serif';
+  ctx.fillText(`Cannot load level: ${err.message}`, 20, 40);
+  throw err;
 }
-// Two floating platforms to look at (the player cannot reach them yet).
-for (let c = 6; c <= 11; c++) map.setTile(c, 14, TILE_SOLID);
-for (let c = 16; c <= 22; c++) map.setTile(c, 10, TILE_SOLID);
+const { level, image: tilesetImage } = loaded;
+const map = level.tileMap; // collision, raycast and camera keep using "map" unchanged
 
 // ---- Game objects ----
 const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
-const player = new Player(64, 100);
+// The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
+const player = new Player(
+  level.spawnX - CONFIG.player.width / 2,
+  level.spawnY - CONFIG.player.height
+);
 const tracers = new TracerSystem();
 const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
@@ -90,13 +96,27 @@ function update(dt) {
   player.update(dt, input, collision);
 }
 
-/** Draw every solid tile. Camera culling will replace this for big maps. */
+/** Draw the tiles inside the camera view, using pictures from the tileset image. */
 function drawTiles() {
   const ts = map.tileSize;
-  ctx.fillStyle = '#5b6b8c';
-  for (let row = 0; row < map.height; row++) {
-    for (let col = 0; col < map.width; col++) {
-      if (map.isSolid(col, row)) ctx.fillRect(col * ts, row * ts, ts, ts);
+  const { firstGid, columns } = level.tileset;
+
+  // Visible range of tiles, clamped to the map.
+  const firstCol = Math.max(0, Math.floor(camera.x / ts));
+  const lastCol = Math.min(map.width - 1, Math.floor((camera.x + camera.viewWidth) / ts));
+  const firstRow = Math.max(0, Math.floor(camera.y / ts));
+  const lastRow = Math.min(map.height - 1, Math.floor((camera.y + camera.viewHeight) / ts));
+
+  for (let row = firstRow; row <= lastRow; row++) {
+    for (let col = firstCol; col <= lastCol; col++) {
+      const gid = level.getGid(col, row);
+      if (gid === 0) continue; // empty tile
+
+      // Position of this tile's picture inside the tileset image.
+      const index = gid - firstGid;
+      const sx = (index % columns) * ts;
+      const sy = Math.floor(index / columns) * ts;
+      ctx.drawImage(tilesetImage, sx, sy, ts, ts, col * ts, row * ts, ts, ts);
     }
   }
 }
