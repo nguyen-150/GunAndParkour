@@ -1,0 +1,73 @@
+// src/level/Level.js
+// A playable level built from parsed TMX data: collision grid, tile ids, spawn point.
+
+import { TileMap, TILE_SOLID } from './TileMap.js';
+
+/**
+ * One level of the game.
+ *
+ * It keeps two views of the same map on purpose:
+ *   - tileMap: 1 byte per tile (empty or solid), used by collision and raycast;
+ *   - gids: the original Tiled tile ids, used only to pick the picture to draw.
+ * So physics never needs to know about Tiled or tilesets.
+ *
+ * Complexity: fromTmx() is O(width * height) and runs once per level load;
+ * getGid() is O(1); memory is O(width * height).
+ */
+export class Level {
+  /**
+   * @param {TileMap} tileMap collision grid
+   * @param {Uint16Array} gids Tiled tile ids, row by row (0 = empty)
+   * @param {{firstGid:number, columns:number, imageSource:string}} tileset
+   * @param {number} spawnX player feet x in px (middle of the feet)
+   * @param {number} spawnY player feet y in px
+   */
+  constructor(tileMap, gids, tileset, spawnX, spawnY) {
+    this.tileMap = tileMap;
+    this.gids = gids;
+    this.tileset = tileset;
+    this.spawnX = spawnX;
+    this.spawnY = spawnY;
+  }
+
+  /**
+   * Build a level from the result of TmxLoader.parse().
+   * Every tile with a non-zero id in the "Ground" layer is solid.
+   * @param {import('./TmxLoader.js').TmxData} data
+   * @returns {Level}
+   */
+  static fromTmx(data) {
+    if (data.tileWidth !== data.tileHeight) {
+      throw new Error('Level: tiles must be square');
+    }
+
+    const ground = data.layers.Ground;
+    if (ground === undefined) {
+      throw new Error('Level: tile layer named "Ground" not found');
+    }
+
+    const spawn = data.objects.find((o) => o.name === 'player_spawn');
+    if (spawn === undefined) {
+      throw new Error('Level: object named "player_spawn" not found');
+    }
+
+    const tileMap = new TileMap(data.width, data.height, data.tileWidth);
+    // Same row-by-row order as the CSV, so index i maps straight to tiles[i].
+    for (let i = 0; i < ground.length; i++) {
+      if (ground[i] !== 0) tileMap.tiles[i] = TILE_SOLID;
+    }
+
+    return new Level(tileMap, ground, data.tileset, spawn.x, spawn.y);
+  }
+
+  /**
+   * @param {number} col tile column
+   * @param {number} row tile row
+   * @returns {number} Tiled tile id at (col, row); 0 for empty or outside the map
+   */
+  getGid(col, row) {
+    const map = this.tileMap;
+    if (!map.inBounds(col, row)) return 0;
+    return this.gids[row * map.width + col];
+  }
+}
