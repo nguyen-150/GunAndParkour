@@ -47,6 +47,7 @@ export const CONFIG = {
     maxRunSpeed: 220, // px/s, speed reached by A/D alone
     frictionGround: 1800, // px/s^2, slows down when no key is held on the ground
     frictionAir: 120, // px/s^2, small air drag when no key is held
+    respawnDelay: 1.0, // s the player stays dead before reappearing at the spawn point
   },
 
   // ---- Weapon: shotgun, infinite ammo, 1-round magazine ----
