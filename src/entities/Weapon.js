@@ -90,28 +90,56 @@ export class Weapon {
     return true;
   }
 
+    /**
+   * The hand: the point of the body the gun turns around, horizontally in the
+   * middle of the hitbox and `CONFIG.gun.mountHeight` above the feet.
+   * @param {{x:number, y:number, width:number, height:number}} owner
+   * @returns {number} world x in px
+   */
+  handX(owner) {
+    return owner.x + owner.width / 2;
+  }
+
   /**
-   * Cast one ray per pellet at a random angle inside the cone and spawn a
-   * visual streak from the owner's center to where each ray ends.
+   * @param {{x:number, y:number, width:number, height:number}} owner
+   * @returns {number} world y of the hand in px
+   */
+  handY(owner) {
+    return owner.y + owner.height - CONFIG.gun.mountHeight;
+  }
+  
+  /**
+   * Cast one ray per pellet from the hand, each at a random angle inside the
+   * cone, and spawn a streak from the barrel end to where each ray ends.
+   * Rays start at the hand (always inside the owner's hitbox, so never inside
+   * a wall); streaks start at the muzzle but never past the hit point, so
+   * standing against a wall does not draw them inside the wall.
    * @param {{x:number, y:number, width:number, height:number}} owner
    * @param {number} aimAngle aim direction in radians
    */
   spawnPellets(owner, aimAngle) {
     const cfg = CONFIG.weapon;
     const spread = (cfg.spreadDegrees * Math.PI) / 180; // total cone angle in radians
-    const ox = owner.x + owner.width / 2;
-    const oy = owner.y + owner.height / 2;
+    const hx = this.handX(owner);
+    const hy = this.handY(owner);
+
+    // Unit vector of the aim, computed once for all pellets.
+    const aimX = Math.cos(aimAngle);
+    const aimY = Math.sin(aimAngle);
+    const muzzle = CONFIG.gun.muzzleLength;
 
     for (let i = 0; i < cfg.pellets; i++) {
       const angle = aimAngle + (this.random() - 0.5) * spread;
       const dx = Math.cos(angle);
       const dy = Math.sin(angle);
 
-      // Streak ends at the wall hit, or at full range if nothing was hit.
-      const hit = castRay(this.map, ox, oy, dx, dy, cfg.range, this.rayHit);
+      // The ray ends at the wall hit, or at full range if nothing was hit.
+      const hit = castRay(this.map, hx, hy, dx, dy, cfg.range, this.rayHit);
       const dist = hit ? this.rayHit.distance : cfg.range;
 
-      this.tracers.spawn(ox, oy, ox + dx * dist, oy + dy * dist);
+      // All streaks leave from the same barrel end, but never start beyond the hit.
+      const start = Math.min(muzzle, dist);
+      this.tracers.spawn(hx + aimX * start, hy + aimY * start, hx + dx * dist, hy + dy * dist);
     }
   }
 }
