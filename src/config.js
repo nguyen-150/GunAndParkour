@@ -40,8 +40,8 @@ export const CONFIG = {
 
   // ---- Player ----
   player: {
-    width: 24,
-    height: 30,
+    width: 14, // hitbox, a little narrower than the 17 px wide sprite
+    height: 36, // hitbox, a little shorter than the 40 px tall sprite (feet aligned)
     runAccelGround: 2200, // px/s^2 when holding A/D on the ground
     runAccelAir: 900, // px/s^2 when holding A/D in the air (less control)
     maxRunSpeed: 220, // px/s, speed reached by A/D alone
