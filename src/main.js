@@ -8,6 +8,7 @@ import { InputHandler } from './core/InputHandler.js';
 import { Level } from './level/Level.js';
 import { TmxLoader } from './level/TmxLoader.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
+import { HazardSystem } from './physics/HazardSystem.js';
 import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
@@ -72,6 +73,7 @@ const map = level.tileMap; // collision, raycast and camera keep using "map" unc
 const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
+const hazards = new HazardSystem(level);
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
   level.spawnX - CONFIG.player.width / 2,
@@ -82,9 +84,20 @@ const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
+/** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
   weapon.update(dt);
   tracers.update(dt);
+
+  // Dead: only count the respawn delay down, then come back with a fresh weapon.
+  if (player.dead) {
+    player.update(dt, input, collision);
+    if (player.canRespawn) {
+      player.respawn(level.spawnX, level.spawnY);
+      weapon.reset();
+    }
+    return;
+  }
 
   // Fire before moving the player, so the recoil is applied in this very step.
   if (input.mouseDown) {
@@ -94,12 +107,33 @@ function update(dt) {
   }
 
   player.update(dt, input, collision);
+
+  // Check after moving and collision, so the position is already resolved.
+  if (hazards.check(player) !== 0) player.die();
 }
 
 /** Draw the tiles inside the camera view, using pictures from the tileset image. */
-function drawTiles() {
+/** Draw the tileset picture of tile id gid at map position (col, row). */
+function drawTile(gid, col, row) {
   const ts = map.tileSize;
   const { firstGid, columns } = level.tileset;
+  const index = gid - firstGid;
+  ctx.drawImage(
+    tilesetImage,
+    (index % columns) * ts, // position of the picture in the tileset image
+    Math.floor(index / columns) * ts,
+    ts,
+    ts,
+    col * ts, // position in the world
+    row * ts,
+    ts,
+    ts
+  );
+}
+
+/** Draw the tiles inside the camera view: ground first, hazards on top. */
+function drawTiles() {
+  const ts = map.tileSize;
 
   // Visible range of tiles, clamped to the map.
   const firstCol = Math.max(0, Math.floor(camera.x / ts));
@@ -109,14 +143,11 @@ function drawTiles() {
 
   for (let row = firstRow; row <= lastRow; row++) {
     for (let col = firstCol; col <= lastCol; col++) {
-      const gid = level.getGid(col, row);
-      if (gid === 0) continue; // empty tile
+      const ground = level.getGid(col, row);
+      if (ground !== 0) drawTile(ground, col, row);
 
-      // Position of this tile's picture inside the tileset image.
-      const index = gid - firstGid;
-      const sx = (index % columns) * ts;
-      const sy = Math.floor(index / columns) * ts;
-      ctx.drawImage(tilesetImage, sx, sy, ts, ts, col * ts, row * ts, ts, ts);
+      const hazard = level.getHazardGid(col, row);
+      if (hazard !== 0) drawTile(hazard, col, row);
     }
   }
 }
@@ -165,7 +196,7 @@ function render(alpha) {
   drawTiles();
   player.render(ctx, alpha);
   tracers.render(ctx);
-  drawAim();
+  if (!player.dead) drawAim();
   ctx.restore();
 
   // Screen space: the HUD stays fixed on the screen.
@@ -182,6 +213,15 @@ function render(alpha) {
     40,
     72
   );
+  
+  // Death notice (screen space) until the player respawns.
+  if (player.dead) {
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = 'bold 32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOU DIED', canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = 'left';
+  }
 }
 
 const tuningPanel = new TuningPanel(); // remembers start-up values for the Reset button
