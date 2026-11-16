@@ -6,6 +6,12 @@ import { CONFIG } from '../config.js';
 /** Tolerance for floating-point drift when counting the respawn timer down. */
 const TIME_EPSILON = 1e-9;
 
+
+// Run animation (visual only).
+const RUN_FRAMES = 4; // frames in the run strip, side by side
+const RUN_FRAME_DISTANCE = 22; // px run on the ground per frame (4 frames = 88 px per stride)
+const RUN_MIN_SPEED = 30; // px/s: slower than this the standing sprite is shown
+
 /**
  * Player character. Also a "body" for CollisionSystem (x, y, width, height, vx, vy).
  *
@@ -39,6 +45,7 @@ export class Player {
     // Death state: while dead the player ignores input, does not move and is not drawn.
     this.dead = false;
     this.respawnTimer = 0; // seconds left before the player may reappear
+    this.runDistance = 0; // px run on the ground since the last stop; picks the run frame
   }
 
   /**
@@ -55,12 +62,8 @@ export class Player {
       this.respawnTimer -= dt;
       return; // dead: no input, no gravity, no movement
     }
-
-    
-
     this.applyHorizontalControl(dt, input.getMoveAxis());
     
-
     // Gravity, then clamp so the speed never exceeds what collision can handle.
     const phys = CONFIG.physics;
     this.vy += phys.gravity * dt;
@@ -68,6 +71,13 @@ export class Player {
     this.vy = Math.max(-phys.maxSpeedY, Math.min(phys.maxSpeedY, this.vy));
 
     collision.move(this, dt);
+    
+    // Distance run on the ground drives the run animation; stopping restarts the stride.
+    if (this.onGround && Math.abs(this.vx) > RUN_MIN_SPEED) {
+      this.runDistance += Math.abs(this.vx) * dt;
+    } else {
+      this.runDistance = 0;
+    }
   }
 
   /**
@@ -111,6 +121,7 @@ export class Player {
     this.hitCeiling = false;
     this.dead = false;
     this.respawnTimer = 0;
+    this.runDistance = 0;
   }
 
   applyHorizontalControl(dt, axis) {
@@ -133,15 +144,17 @@ export class Player {
   }
 
   /**
-   * Draw the player, interpolated between the last two steps.
-   * With a sprite, the feet are aligned with the bottom of the hitbox and the
-   * sprite is centered on it; without one, a rectangle is drawn instead.
+   * Draw the player, interpolated between the last two steps. The feet are
+   * aligned with the bottom of the hitbox and the picture is centered on it.
+   * Running on the ground uses the run strip, otherwise the standing sprite;
+   * with no sprite at all a rectangle is drawn.
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} alpha fraction of a step left in the accumulator, [0, 1)
-   * @param {HTMLImageElement|null} [sprite] picture of the player facing right
-   * @param {number} [facing] 1 = facing right, -1 = facing left (sprite is mirrored)
+   * @param {HTMLImageElement|null} [sprite] standing picture, facing right
+   * @param {number} [facing] 1 = facing right, -1 = facing left (pictures are mirrored)
+   * @param {HTMLImageElement|null} [runStrip] RUN_FRAMES run frames side by side, facing right
    */
-  render(ctx, alpha, sprite = null, facing = 1) {
+  render(ctx, alpha, sprite = null, facing = 1, runStrip = null) {
     if (this.dead) return; // a dead player is not drawn
 
     const drawX = this.prevX + (this.x - this.prevX) * alpha;
@@ -159,8 +172,22 @@ export class Player {
 
     ctx.save();
     ctx.translate(centerX, feetY);
-    ctx.scale(facing, 1); // -1 mirrors the sprite around the vertical axis
-    ctx.drawImage(sprite, -Math.round(sprite.width / 2), -sprite.height);
+    ctx.scale(facing, 1); // -1 mirrors the picture around the vertical axis
+
+    const running = runStrip !== null && this.onGround && Math.abs(this.vx) > RUN_MIN_SPEED;
+    if (running) {
+      const frameW = Math.floor(runStrip.width / RUN_FRAMES);
+      let frame = Math.floor(this.runDistance / RUN_FRAME_DISTANCE) % RUN_FRAMES;
+      // Moving against the aiming side (backpedalling): play the stride backwards.
+      if (this.vx * facing < 0) frame = RUN_FRAMES - 1 - frame;
+      ctx.drawImage(
+        runStrip,
+        frame * frameW, 0, frameW, runStrip.height, // source: one frame of the strip
+        -Math.round(frameW / 2), -runStrip.height, frameW, runStrip.height // feet on the origin
+      );
+    } else {
+      ctx.drawImage(sprite, -Math.round(sprite.width / 2), -sprite.height);
+    }
     ctx.restore();
   }
 }
