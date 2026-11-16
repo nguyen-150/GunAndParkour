@@ -8,8 +8,8 @@ const TIME_EPSILON = 1e-9;
 
 
 // Run animation (visual only).
-const RUN_FRAMES = 4; // frames in the run strip, side by side
-const RUN_FRAME_DISTANCE = 22; // px run on the ground per frame (4 frames = 88 px per stride)
+const RUN_FRAMES = 8; // frames in the run strip, side by side
+const RUN_FRAME_DISTANCE = 11; // px run on the ground per frame (8 frames = 88 px per stride)
 const RUN_MIN_SPEED = 30; // px/s: slower than this the standing sprite is shown
 
 /**
