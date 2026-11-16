@@ -133,15 +133,34 @@ export class Player {
   }
 
   /**
-   * Draw the player as a rectangle, interpolated between the last two steps.
+   * Draw the player, interpolated between the last two steps.
+   * With a sprite, the feet are aligned with the bottom of the hitbox and the
+   * sprite is centered on it; without one, a rectangle is drawn instead.
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} alpha fraction of a step left in the accumulator, [0, 1)
+   * @param {HTMLImageElement|null} [sprite] picture of the player facing right
+   * @param {number} [facing] 1 = facing right, -1 = facing left (sprite is mirrored)
    */
-  render(ctx, alpha) {
+  render(ctx, alpha, sprite = null, facing = 1) {
     if (this.dead) return; // a dead player is not drawn
+
     const drawX = this.prevX + (this.x - this.prevX) * alpha;
     const drawY = this.prevY + (this.y - this.prevY) * alpha;
-    ctx.fillStyle = '#ffcc33';
-    ctx.fillRect(drawX, drawY, this.width, this.height);
+
+    if (sprite === null) {
+      ctx.fillStyle = '#ffcc33';
+      ctx.fillRect(drawX, drawY, this.width, this.height);
+      return;
+    }
+
+    // Whole pixels only: pixel art drawn at fractional positions looks blurry.
+    const centerX = Math.round(drawX + this.width / 2);
+    const feetY = Math.round(drawY + this.height);
+
+    ctx.save();
+    ctx.translate(centerX, feetY);
+    ctx.scale(facing, 1); // -1 mirrors the sprite around the vertical axis
+    ctx.drawImage(sprite, -Math.round(sprite.width / 2), -sprite.height);
+    ctx.restore();
   }
 }

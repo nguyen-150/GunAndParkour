@@ -115,7 +115,7 @@ function update(dt) {
 /** Draw the tiles inside the camera view, using pictures from the tileset image. */
 /** Draw the tileset picture of tile id gid at map position (col, row). */
 function drawTile(gid, col, row) {
-  const ts = map.tileSize;
+  const ts = map.tileSize;  
   const { firstGid, columns } = level.tileset;
   const index = gid - firstGid;
   ctx.drawImage(
@@ -129,6 +129,22 @@ function drawTile(gid, col, row) {
     ts,
     ts
   );
+}
+
+/** Load one image and wait until it can be drawn. */
+async function loadImage(url) {
+  const image = new Image();
+  image.src = new URL(url, document.baseURI).href;
+  await image.decode();
+  return image;
+}
+
+// The game still runs without the player picture (a rectangle is drawn instead).
+let playerSprite = null;
+try {
+  playerSprite = await loadImage('./assets/sprites/player.png');
+} catch (err) {
+  console.warn('Player sprite not loaded, drawing a rectangle instead:', err.message);
 }
 
 /** Draw the tiles inside the camera view: ground first, hazards on top. */
@@ -194,8 +210,9 @@ function render(alpha) {
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
   drawTiles();
-  player.render(ctx, alpha);
-  tracers.render(ctx);
+  ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
+  const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
+  player.render(ctx, alpha, playerSprite, facing);  tracers.render(ctx);
   if (!player.dead) drawAim();
   ctx.restore();
 

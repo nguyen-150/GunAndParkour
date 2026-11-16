@@ -59,6 +59,14 @@ export const CONFIG = {
     range: 256, // px (8 tiles), shotgun is a close-range weapon
     tracerLifetime: 0.08, // s, how long the visual streak stays on screen
   },
+    // ---- Gun sprite: where it is held and where the barrel ends (px) ----
+  gun: {
+    mountHeight: 15, // height of the hand above the player's feet; the gun turns around this point
+    pivotX: 9, // point of gun.png that sits on the hand: px from its left edge
+    pivotY: 4, // px from its top edge; keep it on the center line of the barrel
+    muzzleLength: 23, // distance from the pivot to the end of the barrel (gun.png width - pivotX)
+  },
+
     // ---- Hazards: lethal tiles from the Hazards layer ----
   // Key = tile id (gid) in the tileset. The box is relative to the tile's
   // top-left corner, in px. Spikes are smaller than their tile so the player
