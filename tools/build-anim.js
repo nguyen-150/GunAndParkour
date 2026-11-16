@@ -18,7 +18,10 @@ const OUT_DIR = new URL('../assets/sprites/', import.meta.url);
 const OUT_STRIP = new URL('../assets/sprites/player-run.png', import.meta.url);
 const OUT_PREVIEW = new URL('../assets/source/run-preview.png', import.meta.url);
 
-const FRAMES = 4; // poses in the source image, evenly spaced in one row
+const SOURCE_FRAMES = 4; // poses in the source image, evenly spaced in one row
+// Poses to use, in play order.
+const FRAME_ORDER = [0, 1, 2, 3];
+const FRAMES = FRAME_ORDER.length; // frames in the output strip
 const TARGET_HEIGHT = 40; // px, must match the height of player.png
 const PREVIEW_SCALE = 6;
 const PREVIEW_BG = [28, 31, 43]; // same as the game's background
@@ -273,13 +276,13 @@ function blit(dest, destW, src, srcW, srcH, ox, oy, scale) {
 // ---------- Main ----------
 
 const img = decodePng(readFileSync(SOURCE));
-const cellW = Math.floor(img.width / FRAMES);
-console.log(`Source: ${img.width}x${img.height}, ${FRAMES} cells of ${cellW} px`);
+const cellW = Math.floor(img.width / SOURCE_FRAMES);
+console.log(`Source: ${img.width}x${img.height}, ${SOURCE_FRAMES} cells of ${cellW} px`);
 
 // 1. Measure every frame inside its own equal-width cell.
 const cells = [];
-for (let i = 0; i < FRAMES; i++) {
-  const x0 = i * cellW;
+for (let i = 0; i < SOURCE_FRAMES; i++) {
+const x0 = i * cellW;
   const x1 = x0 + cellW;
   const m = analyseCell(img, x0, x1);
   if (m === null) throw new Error(`Frame ${i + 1}: nothing found in its cell`);
@@ -288,6 +291,11 @@ for (let i = 0; i < FRAMES; i++) {
   }
   cells.push({ x0, x1, ...m });
 }
+
+// Keep only the chosen poses, in play order.
+const chosen = FRAME_ORDER.map((i) => cells[i]);
+cells.length = 0;
+cells.push(...chosen);
 
 // 2. One shared scale and feet line for all frames.
 const top = Math.min(...cells.map((c) => c.minY));

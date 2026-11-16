@@ -146,6 +146,15 @@ try {
 } catch (err) {
   console.warn('Player sprite not loaded, drawing a rectangle instead:', err.message);
 }
+
+// Run animation strip: frames side by side. Optional, the standing sprite is used without it.
+let runStrip = null;
+try {
+  runStrip = await loadImage('./assets/sprites/player-run.png');
+} catch (err) {
+  console.warn('Run strip not loaded, using the standing sprite while running:', err.message);
+}
+
 let gunSprite = null;
 try {
   gunSprite = await loadImage('./assets/sprites/gun.png');
@@ -239,7 +248,7 @@ function render(alpha) {
   drawTiles();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
-  player.render(ctx, alpha, playerSprite, facing);
+  player.render(ctx, alpha, playerSprite, facing, runStrip);
     if (gunSprite !== null && !player.dead) {
     // Same whole-pixel rounding as Player.render, so the gun does not jitter against the body.
     const handX = Math.round(px);
