@@ -101,8 +101,8 @@ function update(dt) {
 
   // Fire before moving the player, so the recoil is applied in this very step.
   if (input.mouseDown) {
-    const dx = camera.screenToWorldX(input.mouseX) - (player.x + player.width / 2);
-    const dy = camera.screenToWorldY(input.mouseY) - (player.y + player.height / 2);
+    const dx = camera.screenToWorldX(input.mouseX) - weapon.handX(player);
+    const dy = camera.screenToWorldY(input.mouseY) - weapon.handY(player);
     weapon.fire(player, dx, dy);
   }
 
@@ -146,6 +146,12 @@ try {
 } catch (err) {
   console.warn('Player sprite not loaded, drawing a rectangle instead:', err.message);
 }
+let gunSprite = null;
+try {
+  gunSprite = await loadImage('./assets/sprites/gun.png');
+} catch (err) {
+  console.warn('Gun sprite not loaded, the gun will not be drawn:', err.message);
+}
 
 /** Draw the tiles inside the camera view: ground first, hazards on top. */
 function drawTiles() {
@@ -168,32 +174,53 @@ function drawTiles() {
   }
 }
 
-/** Draw the aim ray from the player's center toward the mouse, stopping at the first wall. */
+/** Draw the aim line from the barrel end to the first wall (or max range). */
 function drawAim() {
-  const ox = player.x + player.width / 2;
-  const oy = player.y + player.height / 2;
+  const ox = weapon.handX(player); // same origin as the pellet rays
+  const oy = weapon.handY(player);
   const dx = camera.screenToWorldX(input.mouseX) - ox;
   const dy = camera.screenToWorldY(input.mouseY) - oy;
   const len = Math.hypot(dx, dy);
-  if (len === 0) return; // mouse exactly on the player: no direction
+  if (len === 0) return; // mouse exactly on the hand: no direction
+  const ux = dx / len;
+  const uy = dy / len;
 
   const range = CONFIG.weapon.range;
   const hit = castRay(map, ox, oy, dx, dy, range, aimHit);
   const dist = hit ? aimHit.distance : range;
-  const ex = ox + (dx / len) * dist;
-  const ey = oy + (dy / len) * dist;
+
+  // Start at the barrel end, but never past the wall.
+  const start = Math.min(CONFIG.gun.muzzleLength, dist);
 
   ctx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(ox, oy);
-  ctx.lineTo(ex, ey);
+  ctx.moveTo(ox + ux * start, oy + uy * start);
+  ctx.lineTo(ox + ux * dist, oy + uy * dist);
   ctx.stroke();
 
   if (hit) {
     ctx.fillStyle = '#ff5050';
-    ctx.fillRect(ex - 3, ey - 3, 6, 6); // dot where the ray meets the wall
+    ctx.fillRect(ox + ux * dist - 3, oy + uy * dist - 3, 6, 6); // dot where the ray meets the wall
   }
+}
+
+/**
+ * Draw the gun turning around the hand toward the aim angle.
+ * @param {number} handX world x of the hand (whole pixels)
+ * @param {number} handY world y of the hand (whole pixels)
+ * @param {number} angle aim direction in radians
+ */
+function drawGun(handX, handY, angle) {
+  const g = CONFIG.gun;
+  ctx.save();
+  ctx.translate(handX, handY);
+  ctx.rotate(angle);
+  // Aiming left, a plain rotation would turn the gun upside down: mirror it
+  // across the barrel axis so the stock stays below the barrel.
+  if (Math.cos(angle) < 0) ctx.scale(1, -1);
+  ctx.drawImage(gunSprite, -g.pivotX, -g.pivotY);
+  ctx.restore();
 }
 
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
@@ -212,7 +239,18 @@ function render(alpha) {
   drawTiles();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
-  player.render(ctx, alpha, playerSprite, facing);  tracers.render(ctx);
+  player.render(ctx, alpha, playerSprite, facing);
+    if (gunSprite !== null && !player.dead) {
+    // Same whole-pixel rounding as Player.render, so the gun does not jitter against the body.
+    const handX = Math.round(px);
+    const handY = Math.round(py + player.height / 2) - CONFIG.gun.mountHeight;
+    const angle = Math.atan2(
+      camera.screenToWorldY(input.mouseY) - handY,
+      camera.screenToWorldX(input.mouseX) - handX
+    );
+    drawGun(handX, handY, angle);
+  }
+  tracers.render(ctx);
   if (!player.dead) drawAim();
   ctx.restore();
 
