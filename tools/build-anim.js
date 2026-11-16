@@ -13,14 +13,16 @@
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-const SOURCE = new URL('../assets/source/run1.png', import.meta.url);
+const SOURCE = new URL('../assets/source/run8.png', import.meta.url);
 const OUT_DIR = new URL('../assets/sprites/', import.meta.url);
 const OUT_STRIP = new URL('../assets/sprites/player-run.png', import.meta.url);
 const OUT_PREVIEW = new URL('../assets/source/run-preview.png', import.meta.url);
 
-const SOURCE_FRAMES = 4; // poses in the source image, evenly spaced in one row
-// Poses to use, in play order.
-const FRAME_ORDER = [0, 1, 2, 3];
+const SOURCE_COLS = 4; // poses per row in the source image
+const SOURCE_ROWS = 2; // rows in the source image (read left to right, top to bottom)
+const SOURCE_FRAMES = SOURCE_COLS * SOURCE_ROWS;
+// Poses to use, in play order (0 = first pose of the first row).
+const FRAME_ORDER = [0, 1, 2, 3, 4, 5, 6, 7];
 const FRAMES = FRAME_ORDER.length; // frames in the output strip
 const TARGET_HEIGHT = 40; // px, must match the height of player.png
 const PREVIEW_SCALE = 6;
@@ -273,9 +275,36 @@ function blit(dest, destW, src, srcW, srcH, ox, oy, scale) {
   }
 }
 
+/**
+ * Turn a sheet with several rows into one long row, so the rest of the tool
+ * can treat it as a single strip. Cells are copied in reading order: all
+ * cells of row 0 (left to right), then row 1, and so on.
+ * @param {{width:number, height:number, data:Uint8Array}} img source sheet
+ * @param {number} cols poses per row
+ * @param {number} rows number of rows
+ * @returns {{width:number, height:number, data:Uint8Array}}
+ */
+function flattenRows(img, cols, rows) {
+  if (rows === 1) return img;
+  const cellW = Math.floor(img.width / cols);
+  const cellH = Math.floor(img.height / rows);
+  const outW = cellW * cols * rows;
+  const out = new Uint8Array(outW * cellH * 4);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const destX = (r * cols + c) * cellW;
+      for (let y = 0; y < cellH; y++) {
+        const src = ((r * cellH + y) * img.width + c * cellW) * 4;
+        out.set(img.data.subarray(src, src + cellW * 4), (y * outW + destX) * 4);
+      }
+    }
+  }
+  return { width: outW, height: cellH, data: out };
+}
+
 // ---------- Main ----------
 
-const img = decodePng(readFileSync(SOURCE));
+const img = flattenRows(decodePng(readFileSync(SOURCE)), SOURCE_COLS, SOURCE_ROWS);
 const cellW = Math.floor(img.width / SOURCE_FRAMES);
 console.log(`Source: ${img.width}x${img.height}, ${SOURCE_FRAMES} cells of ${cellW} px`);
 
