@@ -15,7 +15,7 @@ import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
-
+import { PlayerAnimator } from './render/PlayerAnimator.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -74,6 +74,8 @@ const input = new InputHandler();
 input.attach(canvas);
 const collision = new CollisionSystem(map);
 const hazards = new HazardSystem(level);
+const animator = new PlayerAnimator(); // squash, lean and gun kick values
+
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
   level.spawnX - CONFIG.player.width / 2,
@@ -83,6 +85,7 @@ const tracers = new TracerSystem();
 const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
+/** Advance the simulation by one fixed step of dt seconds. */
 /** Advance the simulation by one fixed step of dt seconds. */
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
@@ -95,6 +98,7 @@ function update(dt) {
     if (player.canRespawn) {
       player.respawn(level.spawnX, level.spawnY);
       weapon.reset();
+      animator.reset();
     }
     return;
   }
@@ -103,10 +107,11 @@ function update(dt) {
   if (input.mouseDown) {
     const dx = camera.screenToWorldX(input.mouseX) - weapon.handX(player);
     const dy = camera.screenToWorldY(input.mouseY) - weapon.handY(player);
-    weapon.fire(player, dx, dy);
+    if (weapon.fire(player, dx, dy)) animator.onShot();
   }
 
   player.update(dt, input, collision);
+  animator.update(dt, player); // after the move, so it sees the resolved position
 
   // Check after moving and collision, so the position is already resolved.
   if (hazards.check(player) !== 0) player.die();
@@ -233,6 +238,7 @@ function drawGun(handX, handY, angle) {
   ctx.save();
   ctx.translate(handX, handY);
   ctx.rotate(angle);
+  ctx.translate(-Math.round(animator.gunKick), 0); // kick: slide back along the barrel
   // Aiming left, a plain rotation would turn the gun upside down: mirror it
   // across the barrel axis so the stock stays below the barrel.
   if (Math.cos(angle) < 0) ctx.scale(1, -1);
@@ -256,12 +262,13 @@ function render(alpha) {
   drawTiles();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
-  player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip);
+  player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);
     if (gunSprite !== null && !player.dead) {
     // Same whole-pixel rounding as Player.render, so the gun does not jitter against the body.
     const handX = Math.round(px);
-    const handY = Math.round(py + player.height / 2) - CONFIG.gun.mountHeight;
-    const angle = Math.atan2(
+    // The hand sinks with the landing squash, so the gun stays on the body.
+    const handY = Math.round(py + player.height / 2 - CONFIG.gun.mountHeight * animator.scaleY);
+      const angle = Math.atan2(
       camera.screenToWorldY(input.mouseY) - handY,
       camera.screenToWorldX(input.mouseX) - handX
     );
