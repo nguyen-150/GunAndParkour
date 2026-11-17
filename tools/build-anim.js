@@ -13,16 +13,28 @@
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-const SOURCE = new URL('../assets/source/run8.png', import.meta.url);
-const OUT_DIR = new URL('../assets/sprites/', import.meta.url);
-const OUT_STRIP = new URL('../assets/sprites/player-run.png', import.meta.url);
-const OUT_PREVIEW = new URL('../assets/source/run-preview.png', import.meta.url);
+// Usage: node tools/build-anim.js [source file in assets/source] [columns] [rows] [output name]
+//   run cycle (default): node tools/build-anim.js run8.png 4 2 player-run
+//   air poses:           node tools/build-anim.js air1.png 2 1 player-air
+const [sourceName = 'run8.png', colsArg = '4', rowsArg = '2', outName = 'player-run'] =
+  process.argv.slice(2);
 
-const SOURCE_COLS = 4; // poses per row in the source image
-const SOURCE_ROWS = 2; // rows in the source image (read left to right, top to bottom)
+const SOURCE = new URL(`../assets/source/${sourceName}`, import.meta.url);
+const OUT_DIR = new URL('../assets/sprites/', import.meta.url);
+const OUT_STRIP = new URL(`../assets/sprites/${outName}.png`, import.meta.url);
+const OUT_PREVIEW = new URL(
+  `../assets/source/${outName.replace(/^player-/, '')}-preview.png`,
+  import.meta.url
+);
+
+const SOURCE_COLS = Number(colsArg); // poses per row in the source image
+const SOURCE_ROWS = Number(rowsArg); // rows in the source image (read left to right, top to bottom)
+if (!(SOURCE_COLS >= 1 && SOURCE_ROWS >= 1)) {
+  throw new Error('Usage: node tools/build-anim.js <source file> <columns> <rows> <output name>');
+}
 const SOURCE_FRAMES = SOURCE_COLS * SOURCE_ROWS;
-// Poses to use, in play order (0 = first pose of the first row).
-const FRAME_ORDER = [0, 1, 2, 3, 4, 5, 6, 7];
+// Every pose is used, in reading order (list indexes here to skip or reorder poses).
+const FRAME_ORDER = Array.from({ length: SOURCE_FRAMES }, (_, i) => i);
 const FRAMES = FRAME_ORDER.length; // frames in the output strip
 const TARGET_HEIGHT = 40; // px, must match the height of player.png
 const PREVIEW_SCALE = 6;
