@@ -12,6 +12,9 @@ const RUN_FRAMES = 8; // frames in the run strip, side by side
 const RUN_FRAME_DISTANCE = 11; // px run on the ground per frame (8 frames = 88 px per stride)
 const RUN_MIN_SPEED = 30; // px/s: slower than this the standing sprite is shown
 
+// Air poses (visual only).
+const AIR_FRAMES = 2; // frames in the air strip: 0 = rising, 1 = falling
+
 /**
  * Player character. Also a "body" for CollisionSystem (x, y, width, height, vx, vy).
  *
@@ -146,15 +149,17 @@ export class Player {
   /**
    * Draw the player, interpolated between the last two steps. The feet are
    * aligned with the bottom of the hitbox and the picture is centered on it.
-   * Running on the ground uses the run strip, otherwise the standing sprite;
-   * with no sprite at all a rectangle is drawn.
+   * Running on the ground uses the run strip, being in the air uses the air
+   * strip (rising or falling), anything else the standing sprite; with no
+   * sprite at all a rectangle is drawn.
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} alpha fraction of a step left in the accumulator, [0, 1)
    * @param {HTMLImageElement|null} [sprite] standing picture, facing right
    * @param {number} [facing] 1 = facing right, -1 = facing left (pictures are mirrored)
    * @param {HTMLImageElement|null} [runStrip] RUN_FRAMES run frames side by side, facing right
+   * @param {HTMLImageElement|null} [airStrip] AIR_FRAMES air frames (rising, falling), facing right
    */
-  render(ctx, alpha, sprite = null, facing = 1, runStrip = null) {
+  render(ctx, alpha, sprite = null, facing = 1, runStrip = null, airStrip = null) {
     if (this.dead) return; // a dead player is not drawn
 
     const drawX = this.prevX + (this.x - this.prevX) * alpha;
@@ -175,6 +180,7 @@ export class Player {
     ctx.scale(facing, 1); // -1 mirrors the picture around the vertical axis
 
     const running = runStrip !== null && this.onGround && Math.abs(this.vx) > RUN_MIN_SPEED;
+    const airborne = airStrip !== null && !this.onGround;
     if (running) {
       const frameW = Math.floor(runStrip.width / RUN_FRAMES);
       let frame = Math.floor(this.runDistance / RUN_FRAME_DISTANCE) % RUN_FRAMES;
@@ -184,6 +190,14 @@ export class Player {
         runStrip,
         frame * frameW, 0, frameW, runStrip.height, // source: one frame of the strip
         -Math.round(frameW / 2), -runStrip.height, frameW, runStrip.height // feet on the origin
+      );
+    } else if (airborne) {
+      const frameW = Math.floor(airStrip.width / AIR_FRAMES);
+      const frame = this.vy < 0 ? 0 : 1; // going up: rising pose, otherwise falling pose
+      ctx.drawImage(
+        airStrip,
+        frame * frameW, 0, frameW, airStrip.height,
+        -Math.round(frameW / 2), -airStrip.height, frameW, airStrip.height
       );
     } else {
       ctx.drawImage(sprite, -Math.round(sprite.width / 2), -sprite.height);
