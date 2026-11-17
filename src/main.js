@@ -155,6 +155,14 @@ try {
   console.warn('Run strip not loaded, using the standing sprite while running:', err.message);
 }
 
+// Air poses: rising and falling frames side by side. Optional, like the run strip.
+let airStrip = null;
+try {
+  airStrip = await loadImage('./assets/sprites/player-air.png');
+} catch (err) {
+  console.warn('Air strip not loaded, using the standing sprite in the air:', err.message);
+}
+
 let gunSprite = null;
 try {
   gunSprite = await loadImage('./assets/sprites/gun.png');
@@ -248,7 +256,7 @@ function render(alpha) {
   drawTiles();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
-  player.render(ctx, alpha, playerSprite, facing, runStrip);
+  player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip);
     if (gunSprite !== null && !player.dead) {
     // Same whole-pixel rounding as Player.render, so the gun does not jitter against the body.
     const handX = Math.round(px);
