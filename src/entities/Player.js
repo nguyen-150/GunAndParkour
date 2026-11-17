@@ -158,8 +158,9 @@ export class Player {
    * @param {number} [facing] 1 = facing right, -1 = facing left (pictures are mirrored)
    * @param {HTMLImageElement|null} [runStrip] RUN_FRAMES run frames side by side, facing right
    * @param {HTMLImageElement|null} [airStrip] AIR_FRAMES air frames (rising, falling), facing right
+   * @param {{leanAngle:number, scaleX:number, scaleY:number}|null} [pose] landing squash and lean, from PlayerAnimator
    */
-  render(ctx, alpha, sprite = null, facing = 1, runStrip = null, airStrip = null) {
+  render(ctx, alpha, sprite = null, facing = 1, runStrip = null, airStrip = null, pose = null) {
     if (this.dead) return; // a dead player is not drawn
 
     const drawX = this.prevX + (this.x - this.prevX) * alpha;
@@ -177,8 +178,15 @@ export class Player {
 
     ctx.save();
     ctx.translate(centerX, feetY);
+    if (pose !== null) {
+      ctx.scale(pose.scaleX, pose.scaleY); // landing squash: the feet stay on the ground
+      // Lean around the hand, so the gun (mounted there) stays on the body.
+      ctx.translate(0, -CONFIG.gun.mountHeight);
+      ctx.rotate(pose.leanAngle);
+      ctx.translate(0, CONFIG.gun.mountHeight);
+    }
+    
     ctx.scale(facing, 1); // -1 mirrors the picture around the vertical axis
-
     const running = runStrip !== null && this.onGround && Math.abs(this.vx) > RUN_MIN_SPEED;
     const airborne = airStrip !== null && !this.onGround;
     if (running) {
