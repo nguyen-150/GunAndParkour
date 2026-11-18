@@ -8,13 +8,13 @@
  * the mood (night, cave, forest).
  */
 export const SKY_STOPS = [
-  [0.0, '#14122e'],
-  [0.3, '#3b2466'],
-  [0.52, '#8a3a7a'],
-  [0.68, '#d9605a'],
-  [0.75, '#ffa860'], // horizon glow
-  [0.78, '#5a2f55'], // haze below the horizon
-  [1.0, '#1a1426'],
+  [0.0, '#0d1024'],
+  [0.3, '#1a1f45'],
+  [0.55, '#36305f'],
+  [0.7, '#5d4478'],
+  [0.75, '#8a5a7a'], // horizon glow: a muted rose, so the terrain stands out
+  [0.8, '#5f4872'], // mist below the horizon: shows through pits, still coloured
+  [1.0, '#2e2548'], // deep mist at the bottom: dark, but not black
 ];
 
 /**
@@ -24,15 +24,15 @@ export const SKY_STOPS = [
 const HORIZON = 0.75;
 
 /** The sun: position as a fraction of the view, glow radius in px, camera drift. */
-const SUN = { x: 0.7, y: 0.7, radius: 220, drift: 0.02 };
+const SUN = { x: 0.72, y: 0.34, radius: 170, drift: 0.02 };
 
 /** Sun colors from its center (0) to the edge of its glow (1): bright disc, then fading halo. */
 const SUN_STOPS = [
-  [0.0, '#fff6d8'],
-  [0.13, '#ffeab0'],
-  [0.15, 'rgba(255, 190, 110, 0.6)'],
-  [0.4, 'rgba(255, 140, 90, 0.22)'],
-  [1.0, 'rgba(255, 110, 80, 0)'],
+  [0.0, '#f6e6c4'],
+  [0.13, '#ecd2a8'],
+  [0.15, 'rgba(240, 190, 140, 0.35)'],
+  [0.45, 'rgba(220, 150, 130, 0.10)'],
+  [1.0, 'rgba(200, 120, 120, 0)'],
 ];
 
 /**

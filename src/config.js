@@ -68,12 +68,12 @@ export const CONFIG = {
   },
 
     // ---- Hazards: lethal tiles from the Hazards layer ----
-  // Key = tile id (gid) in the tileset. The box is relative to the tile's
+  // visible: false means the tile still kills the player but is not drawn.
   // top-left corner, in px. Spikes are smaller than their tile so the player
   // dies on the spike tips, not for brushing past empty space around them.
   hazards: {
     3: { x: 4, y: 16, w: 24, h: 16 }, // spikes
-    4: { x: 0, y: 0, w: 32, h: 32 }, // abyss (bottom of a pit)
+    4: { x: 0, y: 0, w: 32, h: 32, visible: false }, // abyss (bottom of a pit): lethal but not drawn
   },
 
   // ---- Object pools ----

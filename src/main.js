@@ -13,6 +13,7 @@ import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
+import { Background } from './render/Background.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -43,6 +44,7 @@ function resizeCanvas() {
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+const background = new Background(ctx, camera.viewHeight); // gradients are created once, here
 
 // ---- Level: load the map drawn in Tiled and its tileset image ----
 const LEVEL_URL = './assets/maps/level1.tmx';
@@ -191,8 +193,8 @@ function drawTiles() {
       if (ground !== 0) drawTile(ground, col, row);
 
       const hazard = level.getHazardGid(col, row);
-      if (hazard !== 0) drawTile(hazard, col, row);
-    }
+      // Hazards marked visible: false (the abyss) still kill the player but are not drawn.
+      if (hazard !== 0 && CONFIG.hazards[hazard]?.visible !== false) drawTile(hazard, col, row);    }
   }
 }
 
@@ -253,8 +255,7 @@ function render(alpha) {
   const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
   camera.follow(px, py, map.pixelWidth, map.pixelHeight);
 
-  ctx.fillStyle = '#1c1f2b';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
 
   // World space: everything here is shifted by the camera position.
   ctx.save();
