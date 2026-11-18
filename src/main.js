@@ -202,19 +202,20 @@ function drawTiles() {
   }
 }
 
-/** Draw the aim line from the barrel end to the first wall (or max range). */
-function drawAim() {
-  const ox = weapon.handX(player); // same origin as the pellet rays
-  const oy = weapon.handY(player);
-  const dx = camera.screenToWorldX(input.mouseX) - ox;
-  const dy = camera.screenToWorldY(input.mouseY) - oy;
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return; // mouse exactly on the hand: no direction
-  const ux = dx / len;
-  const uy = dy / len;
+/**
+ * Draw the aim line from the barrel end to the first wall (or max range).
+ * It starts at the same hand position and angle as the gun picture, so it
+ * stays glued to the gun while flying fast.
+ * @param {number} ox world x of the hand (the interpolated one used to draw the gun)
+ * @param {number} oy world y of the hand
+ * @param {number} angle aim direction in radians
+ */
+function drawAim(ox, oy, angle) {
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
 
   const range = CONFIG.weapon.range;
-  const hit = castRay(map, ox, oy, dx, dy, range, aimHit);
+  const hit = castRay(map, ox, oy, ux, uy, range, aimHit);
   const dist = hit ? aimHit.distance : range;
 
   // Start at the barrel end, but never past the wall.
@@ -270,19 +271,19 @@ function render(alpha) {
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
   player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);
-    if (gunSprite !== null && !player.dead) {
-    // Same whole-pixel rounding as Player.render, so the gun does not jitter against the body.
-    const handX = Math.round(px);
-    // The hand sinks with the landing squash, so the gun stays on the body.
-    const handY = Math.round(py + player.height / 2 - CONFIG.gun.mountHeight * animator.scaleY);
-      const angle = Math.atan2(
-      camera.screenToWorldY(input.mouseY) - handY,
-      camera.screenToWorldX(input.mouseX) - handX
-    );
-    drawGun(handX, handY, angle);
-  }
+  // One hand position and one aim angle per frame, shared by the gun picture and
+  // the aim line. Both use the interpolated position, so neither jitters.
+  const handX = Math.round(px);
+  // The hand sinks with the landing squash, so the gun stays on the body.
+  const handY = Math.round(py + player.height / 2 - CONFIG.gun.mountHeight * animator.scaleY);
+  const aimAngle = Math.atan2(
+    camera.screenToWorldY(input.mouseY) - handY,
+    camera.screenToWorldX(input.mouseX) - handX
+  );
+  if (gunSprite !== null && !player.dead) drawGun(handX, handY, aimAngle);
+
   tracers.render(ctx);
-  if (!player.dead) drawAim();
+  if (!player.dead) drawAim(handX, handY, aimAngle);
   ctx.restore();
 
   atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
