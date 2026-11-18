@@ -69,9 +69,11 @@ export class Background {
     ctx.fillRect(0, 0, w, h);
 
     // The sun is very far away, so it drifts only slightly when the camera moves.
-    const sunX = Math.round(w * SUN.x - camera.x * SUN.drift);
-    const sunY = Math.round(h * SUN.y);
-
+    // Not rounded on purpose: the sun is a soft glow, so sub-pixel positions look smooth.
+    // Rounding made it move one whole pixel only every 50 px of camera travel, which looked jerky.
+    const sunX = w * SUN.x - camera.x * SUN.drift;
+    const sunY = h * SUN.y;
+    
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h * HORIZON); // nothing of the sun below the horizon

@@ -15,6 +15,7 @@ import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
 import { Background } from './render/Background.js';
 import { Parallax } from './render/Parallax.js';
+import { Atmosphere } from './render/Atmosphere.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -47,6 +48,7 @@ resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 const background = new Background(ctx, camera.viewHeight); // gradients are created once, here
 const parallax = new Parallax(camera.viewHeight); // mountain layers are painted once, here
+const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
 
 // ---- Level: load the map drawn in Tiled and its tileset image ----
 const LEVEL_URL = './assets/maps/level1.tmx';
@@ -259,6 +261,7 @@ function render(alpha) {
 
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
+  atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
 
   // World space: everything here is shifted by the camera position.
   ctx.save();
@@ -282,6 +285,7 @@ function render(alpha) {
   if (!player.dead) drawAim();
   ctx.restore();
 
+  atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
   // Screen space: the HUD stays fixed on the screen.
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
