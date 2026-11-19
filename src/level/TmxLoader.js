@@ -9,7 +9,7 @@
  * @property {number} tileHeight tile height in px
  * @property {{firstGid:number, name:string, columns:number, tileCount:number, imageSource:string}} tileset
  * @property {Object<string, Uint16Array>} layers tile ids (gid, 0 = empty) by layer name, row by row
- * @property {Array<{name:string, x:number, y:number}>} objects points and shapes from object layers
+ * @property {Array<{name:string, x:number, y:number, width:number, height:number}>} objects points and rectangles from object layers (width and height are 0 for points)
  */
 
 /** Parse the key="value" pairs of one XML tag into a plain object. */
@@ -95,7 +95,13 @@ export class TmxLoader {
     const objectRe = /<object\b([^>]*)>/g;
     while ((m = objectRe.exec(text)) !== null) {
       const a = parseAttributes(m[1]);
-      objects.push({ name: a.name ?? '', x: Number(a.x), y: Number(a.y) });
+      objects.push({
+        name: a.name ?? '',
+        x: Number(a.x),
+        y: Number(a.y),
+        width: Number(a.width ?? 0), // rectangles have a size; points do not
+        height: Number(a.height ?? 0),
+      });
     }
 
     return {
