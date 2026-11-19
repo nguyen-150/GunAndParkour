@@ -22,14 +22,16 @@ export class Level {
    * @param {number} spawnX player feet x in px (middle of the feet)
    * @param {number} spawnY player feet y in px
    * @param {Uint16Array|null} [hazards] optional lethal tile ids (spikes, abyss), same layout as gids
+   * @param {Array<{name:string,x:number,y:number,width:number,height:number}>} [zones] named rectangles from the object layer (for example the boss trigger)
    */
-  constructor(tileMap, gids, tileset, spawnX, spawnY, hazards = null) {
+  constructor(tileMap, gids, tileset, spawnX, spawnY, hazards = null, zones = []) {
     this.tileMap = tileMap;
     this.gids = gids;
     this.tileset = tileset;
     this.spawnX = spawnX;
     this.spawnY = spawnY;
     this.hazards = hazards;
+    this.zones = zones;
   }
 
   /**
@@ -62,8 +64,11 @@ export class Level {
     // Optional layer: tiles here are lethal (spikes, abyss) but do not block movement.
     const hazards = data.layers.Hazards ?? null;
 
-    return new Level(tileMap, ground, data.tileset, spawn.x, spawn.y, hazards);
-  }
+    // Rectangles (objects with a size) become named zones; points such as the spawn do not.
+    const zones = data.objects.filter((o) => o.width > 0 && o.height > 0);
+
+    return new Level(tileMap, ground, data.tileset, spawn.x, spawn.y, hazards, zones);
+    }
 
   /**
    * @param {number} col tile column
@@ -87,5 +92,33 @@ export class Level {
     const map = this.tileMap;
     if (!map.inBounds(col, row)) return 0;
     return this.hazards[row * map.width + col];
+  }
+  
+  /**
+   * @param {string} name object name set in Tiled, for example 'boss_trigger'
+   * @returns {{name:string,x:number,y:number,width:number,height:number}|null} the zone, or null
+   */
+  getZone(name) {
+    for (let i = 0; i < this.zones.length; i++) {
+      if (this.zones[i].name === name) return this.zones[i];
+    }
+    return null;
+  }
+
+  /**
+   * True if a body overlaps the named zone. Touching edges alone does not count.
+   * @param {string} name zone name
+   * @param {{x:number, y:number, width:number, height:number}} body
+   * @returns {boolean} false when there is no such zone
+   */
+  overlapsZone(name, body) {
+    const z = this.getZone(name);
+    if (z === null) return false;
+    return (
+      body.x < z.x + z.width &&
+      body.x + body.width > z.x &&
+      body.y < z.y + z.height &&
+      body.y + body.height > z.y
+    );
   }
 }
