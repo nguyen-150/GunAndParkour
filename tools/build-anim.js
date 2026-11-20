@@ -16,9 +16,18 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // Usage: node tools/build-anim.js [source file in assets/source] [columns] [rows] [output name]
 //   run cycle (default): node tools/build-anim.js run8.png 4 2 player-run
 //   air poses:           node tools/build-anim.js air1.png 2 1 player-air
+// Named options such as --height=470 may appear anywhere; the rest are positional.
+const rawArgs = process.argv.slice(2);
+const flags = Object.fromEntries(
+  rawArgs
+    .filter((a) => a.startsWith('--'))
+    .map((a) => {
+      const [key, value = 'true'] = a.slice(2).split('=');
+      return [key, value];
+    })
+);
 const [sourceName = 'run8.png', colsArg = '4', rowsArg = '2', outName = 'player-run'] =
-  process.argv.slice(2);
-
+  rawArgs.filter((a) => !a.startsWith('--'));
 const SOURCE = new URL(`../assets/source/${sourceName}`, import.meta.url);
 const OUT_DIR = new URL('../assets/sprites/', import.meta.url);
 const OUT_STRIP = new URL(`../assets/sprites/${outName}.png`, import.meta.url);
@@ -36,8 +45,9 @@ const SOURCE_FRAMES = SOURCE_COLS * SOURCE_ROWS;
 // Every pose is used, in reading order (list indexes here to skip or reorder poses).
 const FRAME_ORDER = Array.from({ length: SOURCE_FRAMES }, (_, i) => i);
 const FRAMES = FRAME_ORDER.length; // frames in the output strip
-const TARGET_HEIGHT = 40; // px, must match the height of player.png
-const PREVIEW_SCALE = 6;
+const TARGET_HEIGHT = Number(flags.height ?? 40); // px, height of the output frames (40 = size of the player sprites)
+const ANCHOR_TOP = flags.anchor === 'top'; // center frames on the top of the sprite (the wrist of a hand) instead of its center of mass
+const PREVIEW_SCALE = TARGET_HEIGHT > 100 ? 1 : 6; // big sprites are previewed at real size
 const PREVIEW_BG = [28, 31, 43]; // same as the game's background
 
 // ---------- PNG reading ----------
@@ -196,7 +206,29 @@ function analyseCell(img, x0, x1) {
     }
   }
   if (count === 0) return null;
-  return { minX, maxX, minY, maxY, centroidX: sumX / count, count };
+
+  // Center of mass of the top 12% of the sprite: for a hand this is the wrist,
+  // a stable attachment point even when the fingers spread differently.
+  let topSum = 0;
+  let topCount = 0;
+  const topLimit = minY + Math.ceil((maxY - minY + 1) * 0.12);
+  for (let y = minY; y < topLimit; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (isBackground(img.data, (y * img.width + x) * 4)) continue;
+      topSum += x;
+      topCount++;
+    }
+  }
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    centroidX: sumX / count,
+    topCentroidX: topSum / topCount,
+    count,
+  };
 }
 
 /**
@@ -345,7 +377,8 @@ const commonHeight = baseline - top + 1;
 const scale = TARGET_HEIGHT / commonHeight;
 
 // 3. One shared horizontal anchor: the average center of mass of all frames.
-const anchor = cells.reduce((sum, c) => sum + (c.centroidX - c.x0), 0) / FRAMES;
+const anchorOf = (c) => (ANCHOR_TOP ? c.topCentroidX : c.centroidX) - c.x0;
+const anchor = cells.reduce((sum, c) => sum + anchorOf(c), 0) / FRAMES;
 let halfWidth = 0; // source px from the anchor to the farthest pixel of any frame
 for (const c of cells) {
   halfWidth = Math.max(halfWidth, anchor - (c.minX - c.x0), c.maxX + 1 - c.x0 - anchor);
@@ -358,7 +391,7 @@ cells.forEach((c, i) => {
     `frame ${i + 1}: height ${c.maxY - c.minY + 1}, feet at y=${c.maxY}, ` +
       `center x=${(c.centroidX - c.x0).toFixed(0)}, pixels ${c.count}`
   );
-  if (baseline - c.maxY > commonHeight * 0.03) {
+  if (!ANCHOR_TOP && baseline - c.maxY > commonHeight * 0.03) {
     console.warn(`WARNING frame ${i + 1}: feet are ${baseline - c.maxY} px above the others (not on the same line)`);
   }
 });
