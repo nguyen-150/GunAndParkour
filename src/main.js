@@ -81,6 +81,7 @@ input.attach(canvas);
 const collision = new CollisionSystem(map);
 const hazards = new HazardSystem(level);
 const animator = new PlayerAnimator(); // squash, lean and gun kick values
+const bossZone = level.getZone('boss_trigger'); // null on levels without a boss
 
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
@@ -235,6 +236,29 @@ function drawAim(ox, oy, angle) {
 }
 
 /**
+ * Draw a bobbing triangle above the boss trigger zone, pointing down at it.
+ * It only marks where the level ends and says nothing about what waits there.
+ */
+function drawGoalMarker() {
+  if (bossZone === null) return;
+  const cx = Math.round(bossZone.x + bossZone.width / 2);
+  // The bobbing is visual only: it reads the clock but never touches the simulation.
+  const bob = Math.round(Math.sin(performance.now() / 300) * 4);
+  const tip = bossZone.y - 10 + bob; // the point of the triangle, just above the zone
+
+  ctx.beginPath();
+  ctx.moveTo(cx, tip);
+  ctx.lineTo(cx - 12, tip - 18);
+  ctx.lineTo(cx + 12, tip - 18);
+  ctx.closePath();
+  ctx.fillStyle = '#ffd36b';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#3b2a14';
+  ctx.stroke();
+}
+
+/**
  * Draw the gun turning around the hand toward the aim angle.
  * @param {number} handX world x of the hand (whole pixels)
  * @param {number} handY world y of the hand (whole pixels)
@@ -268,6 +292,7 @@ function render(alpha) {
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
   drawTiles();
+  drawGoalMarker();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
   player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);
