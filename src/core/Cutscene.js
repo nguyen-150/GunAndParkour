@@ -77,8 +77,17 @@ export class Cutscene {
    * @param {number} to end of the animation, in seconds
    * @returns {number} 0 before `from`, 1 after `to`
    */
-  progress(from, to) {
-    const t = (this.time - from) / (to - from);
+    /**
+   * How far a time is between two moments, as a number from 0 to 1, for
+   * animations (for example the hand rising from 0.6 s to 1.4 s).
+   * @param {number} from start of the animation, in seconds
+   * @param {number} to end of the animation, in seconds
+   * @param {number} [at] the time to evaluate; defaults to the current time. Rendering passes
+   *   an interpolated time here so animations stay smooth at any frame rate.
+   * @returns {number} 0 before `from`, 1 after `to`
+   */
+  progress(from, to, at = this.time) {
+    const t = (at - from) / (to - from);
     return Math.max(0, Math.min(1, t));
   }
 }

@@ -4,6 +4,7 @@
 
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
+import { Cutscene } from './core/Cutscene.js';
 import { InputHandler } from './core/InputHandler.js';
 import { Level } from './level/Level.js';
 import { TmxLoader } from './level/TmxLoader.js';
@@ -88,6 +89,22 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyZ' && !e.repeat) showZones = !showZones;
 });
 
+// ---- Scripted scene: stepping into the boss trigger (placeholder: rumble, fade out, restart) ----
+const noInput = { getMoveAxis: () => 0 }; // fake keyboard used while the player has no control
+const grabScene = new Cutscene(
+  [
+    {
+      at: 2.2, // the screen is fully black: later this is where the cave level will be loaded
+      run: () => {
+        player.respawn(level.spawnX, level.spawnY);
+        weapon.reset();
+        animator.reset();
+      },
+    },
+  ],
+  2.8
+);
+
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
   level.spawnX - CONFIG.player.width / 2,
@@ -97,8 +114,6 @@ const tracers = new TracerSystem();
 const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
-/** Advance the simulation by one fixed step of dt seconds. */
-/** Advance the simulation by one fixed step of dt seconds. */
 /** Advance the simulation by one fixed step of dt seconds. */
 function update(dt) {
   weapon.update(dt);
@@ -115,6 +130,14 @@ function update(dt) {
     return;
   }
 
+  // Scripted scene: no input, no firing, and nothing can kill the player.
+  if (grabScene.active) {
+    grabScene.update(dt);
+    player.update(dt, noInput, collision);
+    animator.update(dt, player);
+    return;
+  }
+
   // Fire before moving the player, so the recoil is applied in this very step.
   if (input.mouseDown) {
     const dx = camera.screenToWorldX(input.mouseX) - weapon.handX(player);
@@ -128,10 +151,10 @@ function update(dt) {
   // Check after moving and collision, so the position is already resolved.
   if (hazards.check(player) !== 0) player.die();
 
-  // Boss trigger: report the moment the player steps into the zone (placeholder for the cutscene).
+  // Boss trigger: start the scripted scene the moment the player steps into the zone.
   if (bossZone !== null && !player.dead) {
     const inside = level.overlapsZone('boss_trigger', player);
-    if (inside && !wasInsideBossZone) console.log('boss_trigger entered');
+    if (inside && !wasInsideBossZone) grabScene.start();
     wasInsideBossZone = inside;
   }
 }
@@ -310,10 +333,32 @@ function render(alpha) {
   const px = player.prevX + (player.x - player.prevX) * alpha + player.width / 2;
   const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
   camera.follow(px, py, map.pixelWidth, map.pixelHeight);
+  
+  // Scripted scene effects follow the interpolated scene time, so they stay smooth at any frame rate.
+  const sceneT = grabScene.active ? grabScene.time + alpha * CONFIG.loop.fixedStep : 0;
+  let shakeX = 0;
+  let shakeY = 0;
+  let fade = 0; // 0 = clear, 1 = black
+  if (grabScene.active) {
+    // Rumble: fades in during the first 0.3 s and fades out between 1.2 s and 1.4 s.
+    const strength =
+      5 * grabScene.progress(0, 0.3, sceneT) * (1 - grabScene.progress(1.2, 1.4, sceneT));
+    const clock = performance.now() / 1000; // visual only, does not touch the simulation
+    shakeX = Math.round(Math.sin(clock * 90) * strength);
+    shakeY = Math.round(Math.cos(clock * 70) * strength);
+    // Fade out from 1.4 s to 2.2 s, fade back in from 2.2 s to 2.8 s.
+    fade =
+      sceneT < 2.2
+        ? grabScene.progress(1.4, 2.2, sceneT)
+        : 1 - grabScene.progress(2.2, 2.8, sceneT);
+  }
+  ctx.save();
+  ctx.translate(shakeX, shakeY); // the whole picture shakes; the HUD and the fade are drawn after restore
 
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
   atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
+  ctx.restore(); // end of the shaken part of the picture
 
   // World space: everything here is shifted by the camera position.
   ctx.save();
@@ -362,6 +407,13 @@ function render(alpha) {
     ctx.textAlign = 'center';
     ctx.fillText('YOU DIED', canvas.width / 2, canvas.height / 2);
     ctx.textAlign = 'left';
+  }  
+  // Fade to black during the scripted scene (drawn last, over everything).
+  if (fade > 0) {
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
   }
 }
 
