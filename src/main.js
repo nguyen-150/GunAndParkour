@@ -82,6 +82,11 @@ const collision = new CollisionSystem(map);
 const hazards = new HazardSystem(level);
 const animator = new PlayerAnimator(); // squash, lean and gun kick values
 const bossZone = level.getZone('boss_trigger'); // null on levels without a boss
+let wasInsideBossZone = false; // so the entry is reported once, not every step
+let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyZ' && !e.repeat) showZones = !showZones;
+});
 
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
@@ -122,6 +127,13 @@ function update(dt) {
 
   // Check after moving and collision, so the position is already resolved.
   if (hazards.check(player) !== 0) player.die();
+
+  // Boss trigger: report the moment the player steps into the zone (placeholder for the cutscene).
+  if (bossZone !== null && !player.dead) {
+    const inside = level.overlapsZone('boss_trigger', player);
+    if (inside && !wasInsideBossZone) console.log('boss_trigger entered');
+    wasInsideBossZone = inside;
+  }
 }
 
 /** Draw the tiles inside the camera view, using pictures from the tileset image. */
@@ -258,6 +270,21 @@ function drawGoalMarker() {
   ctx.stroke();
 }
 
+/** Debug view (toggle with Z): the level's zones in blue and the player's hitbox in green. */
+function drawZones() {
+  if (!showZones) return;
+  ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(80, 200, 255, 0.25)';
+  ctx.strokeStyle = 'rgba(80, 200, 255, 0.9)';
+  for (let i = 0; i < level.zones.length; i++) {
+    const z = level.zones[i];
+    ctx.fillRect(z.x, z.y, z.width, z.height);
+    ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.width - 1, z.height - 1);
+  }
+  ctx.strokeStyle = 'rgba(120, 255, 120, 0.9)';
+  ctx.strokeRect(Math.round(player.x) + 0.5, Math.round(player.y) + 0.5, player.width, player.height);
+}
+
 /**
  * Draw the gun turning around the hand toward the aim angle.
  * @param {number} handX world x of the hand (whole pixels)
@@ -293,6 +320,7 @@ function render(alpha) {
   ctx.translate(-camera.x, -camera.y);
   drawTiles();
   drawGoalMarker();
+  drawZones();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
   player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);
