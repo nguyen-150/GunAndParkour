@@ -5,6 +5,7 @@
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
 import { Cutscene } from './core/Cutscene.js';
+import { GrabHand, GRAB_TIMELINE } from './render/GrabHand.js';
 import { InputHandler } from './core/InputHandler.js';
 import { Level } from './level/Level.js';
 import { TmxLoader } from './level/TmxLoader.js';
@@ -89,12 +90,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyZ' && !e.repeat) showZones = !showZones;
 });
 
-// ---- Scripted scene: stepping into the boss trigger (placeholder: rumble, fade out, restart) ----
+// ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
 const noInput = { getMoveAxis: () => 0 }; // fake keyboard used while the player has no control
 const grabScene = new Cutscene(
   [
     {
-      at: 2.2, // the screen is fully black: later this is where the cave level will be loaded
+      at: GRAB_TIMELINE.restartAt, // the screen is black: later this is where the cave level will be loaded
       run: () => {
         player.respawn(level.spawnX, level.spawnY);
         weapon.reset();
@@ -102,8 +103,20 @@ const grabScene = new Cutscene(
       },
     },
   ],
-  2.8
+  GRAB_TIMELINE.duration
 );
+
+/** Where the hand comes out of the ground: under the player, on the ground below him. */
+const grabSpot = { x: 0, groundY: 0 };
+
+/** Update grabSpot from the player's current position (a ray straight down finds the ground). */
+function trackGrabSpot() {
+  const cx = player.x + player.width / 2;
+  const feetY = player.y + player.height;
+  const hit = castRay(map, cx, feetY, 0, 1, 4096, aimHit);
+  grabSpot.x = cx;
+  grabSpot.groundY = hit ? feetY + aimHit.distance : feetY;
+}
 
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
@@ -135,6 +148,8 @@ function update(dt) {
     grabScene.update(dt);
     player.update(dt, noInput, collision);
     animator.update(dt, player);
+    // Until the hand appears, follow the player so it rises exactly where he ended up (he may still slide or fall).
+    if (grabScene.time < GRAB_TIMELINE.rise[0]) trackGrabSpot();
     return;
   }
 
@@ -154,8 +169,10 @@ function update(dt) {
   // Boss trigger: start the scripted scene the moment the player steps into the zone.
   if (bossZone !== null && !player.dead) {
     const inside = level.overlapsZone('boss_trigger', player);
-    if (inside && !wasInsideBossZone) grabScene.start();
-    wasInsideBossZone = inside;
+    if (inside && !wasInsideBossZone) {
+      grabScene.start();
+      trackGrabSpot(); // where the hand will come out of the ground
+    }    wasInsideBossZone = inside;
   }
 }
 
@@ -216,6 +233,15 @@ try {
 } catch (err) {
   console.warn('Gun sprite not loaded, the gun will not be drawn:', err.message);
 }
+
+// The skeleton's hand for the grab scene. Optional: the scene still plays without it.
+let handStrip = null;
+try {
+  handStrip = await loadImage('./assets/sprites/boss-hands.png');
+} catch (err) {
+  console.warn('Hand sprite not loaded, the grab scene will have no hand:', err.message);
+}
+const grabHand = handStrip === null ? null : new GrabHand(handStrip);
 
 /** Draw the tiles inside the camera view: ground first, hazards on top. */
 function drawTiles() {
@@ -335,26 +361,27 @@ function render(alpha) {
   camera.follow(px, py, map.pixelWidth, map.pixelHeight);
   
   // Scripted scene effects follow the interpolated scene time, so they stay smooth at any frame rate.
+  const tl = GRAB_TIMELINE;
   const sceneT = grabScene.active ? grabScene.time + alpha * CONFIG.loop.fixedStep : 0;
   let shakeX = 0;
   let shakeY = 0;
   let fade = 0; // 0 = clear, 1 = black
   if (grabScene.active) {
-    // Rumble: fades in during the first 0.3 s and fades out between 1.2 s and 1.4 s.
+    // Rumble: ramps up at the start and dies away before the fade completes.
     const strength =
-      5 * grabScene.progress(0, 0.3, sceneT) * (1 - grabScene.progress(1.2, 1.4, sceneT));
+      5 * grabScene.progress(0, tl.shakeIn, sceneT) * (1 - grabScene.progress(tl.shakeOut[0], tl.shakeOut[1], sceneT));
     const clock = performance.now() / 1000; // visual only, does not touch the simulation
     shakeX = Math.round(Math.sin(clock * 90) * strength);
     shakeY = Math.round(Math.cos(clock * 70) * strength);
-    // Fade out from 1.4 s to 2.2 s, fade back in from 2.2 s to 2.8 s.
     fade =
-      sceneT < 2.2
-        ? grabScene.progress(1.4, 2.2, sceneT)
-        : 1 - grabScene.progress(2.2, 2.8, sceneT);
+      sceneT < tl.restartAt
+        ? grabScene.progress(tl.fadeOut[0], tl.fadeOut[1], sceneT)
+        : 1 - grabScene.progress(tl.fadeIn[0], tl.fadeIn[1], sceneT);
   }
+  // From the moment the fist closes until the restart, the player is inside the hand.
+  const playerGrabbed = grabScene.active && sceneT >= tl.grabAt && sceneT < tl.restartAt;
   ctx.save();
   ctx.translate(shakeX, shakeY); // the whole picture shakes; the HUD and the fade are drawn after restore
-
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
   atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
@@ -368,8 +395,7 @@ function render(alpha) {
   drawZones();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
-  player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);
-  // One hand position and one aim angle per frame, shared by the gun picture and
+  if (!playerGrabbed) player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);  // One hand position and one aim angle per frame, shared by the gun picture and
   // the aim line. Both use the interpolated position, so neither jitters.
   const handX = Math.round(px);
   // The hand sinks with the landing squash, so the gun stays on the body.
@@ -378,10 +404,15 @@ function render(alpha) {
     camera.screenToWorldY(input.mouseY) - handY,
     camera.screenToWorldX(input.mouseX) - handX
   );
-  if (gunSprite !== null && !player.dead) drawGun(handX, handY, aimAngle);
+  if (gunSprite !== null && !player.dead && !playerGrabbed) drawGun(handX, handY, aimAngle);
 
   tracers.render(ctx);
-  if (!player.dead) drawAim(handX, handY, aimAngle);
+  if (!player.dead && !grabScene.active) drawAim(handX, handY, aimAngle);
+
+  // The skeleton's hand is drawn last in the world, so it is in front of the player and the gun.
+  if (grabHand !== null && grabScene.active) {
+    grabHand.draw(ctx, sceneT, grabSpot.x, grabSpot.groundY, grabSpot.groundY - player.height / 2);
+  }
   ctx.restore();
 
   atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
