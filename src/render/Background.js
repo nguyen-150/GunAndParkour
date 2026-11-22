@@ -36,6 +36,24 @@ const SUN_STOPS = [
 ];
 
 /**
+ * Ready-made moods. A theme has the sky color stops and a sun
+ * (or null for no sun, as in the cave).
+ */
+export const THEMES = {
+  sunset: { stops: SKY_STOPS, sun: SUN },
+  // Almost black, with a faint red glow near the bottom, as if lava were about to rise.
+  cave: {
+    stops: [
+      [0.0, '#06030b'],
+      [0.45, '#100717'],
+      [0.75, '#1f0c18'],
+      [1.0, '#3a1015'],
+    ],
+    sun: null,
+  },
+};
+
+/**
  * Sky backdrop. Both gradients are created once, so drawing a frame allocates
  * nothing (creating gradient objects every frame would feed the garbage collector).
  * The sky gradient is vertical, so it stays valid when the window width changes.
@@ -46,14 +64,20 @@ export class Background {
   /**
    * @param {CanvasRenderingContext2D} ctx context the gradients are created on
    * @param {number} viewHeight visible height in px (fixed)
+   * @param {{stops: Array<[number, string]>, sun: (object|null)}} [theme] sky colors and sun; defaults to the sunset
    */
-  constructor(ctx, viewHeight) {
-    this.sky = ctx.createLinearGradient(0, 0, 0, viewHeight);
-    for (const [offset, color] of SKY_STOPS) this.sky.addColorStop(offset, color);
+  constructor(ctx, viewHeight, theme = THEMES.sunset) {
+    this.sun = theme.sun;
 
-    // Centered on (0, 0); draw() moves the origin to the sun position.
-    this.sunGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, SUN.radius);
-    for (const [offset, color] of SUN_STOPS) this.sunGlow.addColorStop(offset, color);
+    this.sky = ctx.createLinearGradient(0, 0, 0, viewHeight);
+    for (const [offset, color] of theme.stops) this.sky.addColorStop(offset, color);
+
+    // Centered on (0, 0); draw() moves the origin to the sun position. Themes without a sun skip it.
+    this.sunGlow = null;
+    if (this.sun !== null) {
+      this.sunGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, this.sun.radius);
+      for (const [offset, color] of SUN_STOPS) this.sunGlow.addColorStop(offset, color);
+    }
   }
 
   /**
@@ -68,19 +92,21 @@ export class Background {
     ctx.fillStyle = this.sky;
     ctx.fillRect(0, 0, w, h);
 
+    const sun = this.sun;
+    if (sun === null) return; // a theme without a sun, for example the cave
+
     // The sun is very far away, so it drifts only slightly when the camera moves.
     // Not rounded on purpose: the sun is a soft glow, so sub-pixel positions look smooth.
-    // Rounding made it move one whole pixel only every 50 px of camera travel, which looked jerky.
-    const sunX = w * SUN.x - camera.x * SUN.drift;
-    const sunY = h * SUN.y;
-    
+    const sunX = w * sun.x - camera.x * sun.drift;
+    const sunY = h * sun.y;
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h * HORIZON); // nothing of the sun below the horizon
     ctx.clip();
     ctx.translate(sunX, sunY);
     ctx.fillStyle = this.sunGlow;
-    ctx.fillRect(-SUN.radius, -SUN.radius, SUN.radius * 2, SUN.radius * 2);
+    ctx.fillRect(-sun.radius, -sun.radius, sun.radius * 2, sun.radius * 2);
     ctx.restore();
   }
 }
