@@ -17,9 +17,15 @@ const PREVIEW_SCALE = 3;
 const PREVIEW_REPEAT = 4;
 const PREVIEW_BG = [28, 31, 43]; // same as the game's background
 
-const SOURCE = new URL('../assets/source/tileset1.png', import.meta.url);
-const OUT_TILES = new URL('../assets/tilesets/tiles.png', import.meta.url);
-const OUT_PREVIEW = new URL('../assets/source/tileset-preview.png', import.meta.url);
+// Usage: node tools/build-tileset.js [source file in assets/source] [output name]
+//   ground tiles (default): node tools/build-tileset.js tileset1.png tiles
+//   cave tiles:             node tools/build-tileset.js cave-tileset1.png cave-tiles
+const [sourceName = 'tileset1.png', outName = 'tiles'] = process.argv.slice(2);
+const OUT_TILES_NAME = `assets/tilesets/${outName}.png`;
+const OUT_PREVIEW_NAME = `assets/source/${outName === 'tiles' ? 'tileset' : outName}-preview.png`;
+const SOURCE = new URL(`../assets/source/${sourceName}`, import.meta.url);
+const OUT_TILES = new URL(`../${OUT_TILES_NAME}`, import.meta.url);
+const OUT_PREVIEW = new URL(`../${OUT_PREVIEW_NAME}`, import.meta.url);
 
 // col/row: quadrant in the source sheet. slot: place in tiles.png (= gid - 1).
 const TILES = [
@@ -304,7 +310,7 @@ for (const tile of TILES) {
 
 mkdirSync(new URL('../assets/tilesets/', import.meta.url), { recursive: true });
 writeFileSync(OUT_TILES, encodePng(2 * TILE, 2 * TILE, sheet));
-console.log(`Wrote assets/tilesets/tiles.png (${2 * TILE}x${2 * TILE})`);
+console.log(`Wrote ${OUT_TILES_NAME} (${2 * TILE}x${2 * TILE})`);
 
 // Preview: one row per tile, each tile repeated side by side, scaled up.
 const pw = TILE * PREVIEW_REPEAT * PREVIEW_SCALE;
@@ -327,4 +333,4 @@ for (const tile of TILES) {
   }
 }
 writeFileSync(OUT_PREVIEW, encodePng(pw, ph, preview));
-console.log(`Wrote assets/source/tileset-preview.png (${pw}x${ph})`);
+console.log(`Wrote ${OUT_PREVIEW_NAME} (${pw}x${ph})`);
