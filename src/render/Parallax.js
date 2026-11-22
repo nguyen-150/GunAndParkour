@@ -18,6 +18,22 @@ export const LAYERS = [
   { factor: 0.45, base: 0.82, amp: 100, color: '#3b2f5c', octaves: [[5, 1], [11, 0.5], [29, 0.25]], seed: 37 },
 ];
 
+
+/**
+ * Cave layers, farthest first. `hang: true` makes the silhouette hang from the
+ * top of the view (stalactites) instead of rising from the bottom: `base` is
+ * then how deep the ceiling reaches at its shortest, `amp` how much longer the
+ * tips go (as fractions and pixels like the other layers).
+ */
+export const CAVE_LAYERS = [
+  { factor: 0.1, base: 0.62, amp: 140, color: '#2b1422', octaves: [[3, 1], [8, 0.5], [17, 0.2]], seed: 5 },
+  { factor: 0.25, base: 0.1, amp: 170, color: '#1a0d19', hang: true, octaves: [[4, 1], [11, 0.45], [26, 0.2]], seed: 17 },
+  { factor: 0.45, base: 0.04, amp: 210, color: '#0e060f', hang: true, octaves: [[5, 1], [13, 0.4], [31, 0.2]], seed: 29 },
+];
+
+/** Layer sets by theme name, matching the themes of Background.js. */
+export const LAYER_SETS = { sunset: LAYERS, cave: CAVE_LAYERS };
+
 const TILE_WIDTH = 2048; // px, wider than the widest view (1600) so two copies always cover it
 const PIXEL = 4; // px, silhouettes are drawn in chunky 4 px blocks like the rest of the art
 
@@ -94,9 +110,15 @@ export class Parallax {
 
       const profile = ridgeProfile(samples, def.octaves, def.seed);
       for (let j = 0; j < samples; j++) {
-        // Top of this column in whole blocks; the column is filled down to the bottom.
-        const top = Math.round((def.base * viewHeight - def.amp * profile[j]) / PIXEL) * PIXEL;
-        g.fillRect(j * PIXEL, top, PIXEL, viewHeight - top);
+        if (def.hang) {
+          // Stalactites: the column is filled from the top of the view down to a tip.
+          const bottom = Math.round((def.base * viewHeight + def.amp * profile[j]) / PIXEL) * PIXEL;
+          g.fillRect(j * PIXEL, 0, PIXEL, bottom);
+        } else {
+          // Top of this column in whole blocks; the column is filled down to the bottom.
+          const top = Math.round((def.base * viewHeight - def.amp * profile[j]) / PIXEL) * PIXEL;
+          g.fillRect(j * PIXEL, top, PIXEL, viewHeight - top);
+        }
       }
       this.layers.push({ canvas, factor: def.factor });
     }
