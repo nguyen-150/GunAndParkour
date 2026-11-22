@@ -40,7 +40,7 @@ const SUN_STOPS = [
  * (or null for no sun, as in the cave).
  */
 export const THEMES = {
-  sunset: { stops: SKY_STOPS, sun: SUN },
+  sunset: { stops: SKY_STOPS, sun: SUN, mist: true },
   // Almost black, with a faint red glow near the bottom, as if lava were about to rise.
   cave: {
     stops: [
@@ -50,6 +50,7 @@ export const THEMES = {
       [1.0, '#3a1015'],
     ],
     sun: null,
+    mist: false, // no pink horizon haze in the dark cave
   },
 };
 

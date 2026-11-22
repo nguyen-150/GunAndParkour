@@ -16,8 +16,8 @@ import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
-import { Background } from './render/Background.js';
-import { Parallax } from './render/Parallax.js';
+import { Background, THEMES } from './render/Background.js';
+import { Parallax, LAYER_SETS } from './render/Parallax.js';
 import { Atmosphere } from './render/Atmosphere.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
@@ -49,15 +49,17 @@ function resizeCanvas() {
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
-const background = new Background(ctx, camera.viewHeight); // gradients are created once, here
-const parallax = new Parallax(camera.viewHeight); // mountain layers are painted once, here
+// The sky and the parallax layers depend on the level's theme: applyTheme() builds them.
+let theme;
+let background;
+let parallax;
 const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
 
 // ---- Levels: loaded by name, so the game can move from one level to the next ----
 const levels = new LevelManager(
   {
-    level1: { url: './assets/maps/level1.tmx', next: 'cave' },
-    cave: { url: './assets/maps/level1.tmx' }, // placeholder: will point to the cave map
+    level1: { url: './assets/maps/level1.tmx', next: 'cave', theme: 'sunset' },
+    cave: { url: './assets/maps/cave.tmx', theme: 'cave' },
   },
   (url) => TmxLoader.load(url),
   async (imageSource, tmxUrl) => {
@@ -81,6 +83,7 @@ try {
 let currentName = loaded.name; // name of the level being played
 let { level, image: tilesetImage } = loaded;
 let map = level.tileMap; // collision, raycast and camera keep using "map" unchanged
+applyTheme(currentName); // sky and mountains for the first level
 
 // ---- Game objects ----
 const input = new InputHandler();
@@ -153,6 +156,14 @@ function preloadNextLevel() {
     .catch((err) => console.warn('Next level not loaded:', err.message));
 }
 
+/** Rebuild the sky and the parallax layers for the theme of a level ("sunset" or "cave"). */
+function applyTheme(levelName) {
+  const name = levels.definition(levelName).theme ?? 'sunset';
+  theme = THEMES[name] ?? THEMES.sunset;
+  background = new Background(ctx, camera.viewHeight, theme);
+  parallax = new Parallax(camera.viewHeight, LAYER_SETS[name] ?? LAYER_SETS.sunset);
+}
+
 /**
  * Switch the game to a loaded level: rebuild everything that depends on the
  * map, and put the player at the new spawn point with a fresh weapon.
@@ -160,6 +171,7 @@ function preloadNextLevel() {
  */
 function applyLevel(result) {
   currentName = result.name;
+  applyTheme(currentName);
   level = result.level;
   tilesetImage = result.image;
   map = level.tileMap;
@@ -434,7 +446,7 @@ function render(alpha) {
   ctx.translate(shakeX, shakeY); // the whole picture shakes; the HUD and the fade are drawn after restore
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
-  atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
+  if (theme.mist) atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
   ctx.restore(); // end of the shaken part of the picture
 
   // World space: everything here is shifted by the camera position.
