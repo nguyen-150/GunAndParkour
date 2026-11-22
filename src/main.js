@@ -8,6 +8,7 @@ import { Cutscene } from './core/Cutscene.js';
 import { GrabHand, GRAB_TIMELINE } from './render/GrabHand.js';
 import { InputHandler } from './core/InputHandler.js';
 import { Level } from './level/Level.js';
+import { LevelManager } from './level/LevelManager.js';
 import { TmxLoader } from './level/TmxLoader.js';
 import { CollisionSystem } from './physics/CollisionSystem.js';
 import { HazardSystem } from './physics/HazardSystem.js';
@@ -52,38 +53,42 @@ const background = new Background(ctx, camera.viewHeight); // gradients are crea
 const parallax = new Parallax(camera.viewHeight); // mountain layers are painted once, here
 const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
 
-// ---- Level: load the map drawn in Tiled and its tileset image ----
-const LEVEL_URL = './assets/maps/level1.tmx';
-
-/** Load a .tmx map and the tileset image it points to. */
-async function loadLevel(url) {
-  const level = Level.fromTmx(await TmxLoader.load(url));
-  const image = new Image();
-  // The image path in the .tmx is relative to the .tmx file itself.
-  image.src = new URL(level.tileset.imageSource, new URL(url, document.baseURI)).href;
-  await image.decode();
-  return { level, image };
-}
+// ---- Levels: loaded by name, so the game can move from one level to the next ----
+const levels = new LevelManager(
+  {
+    level1: { url: './assets/maps/level1.tmx', next: 'cave' },
+    cave: { url: './assets/maps/level1.tmx' }, // placeholder: will point to the cave map
+  },
+  (url) => TmxLoader.load(url),
+  async (imageSource, tmxUrl) => {
+    const image = new Image();
+    // The image path in the .tmx is relative to the .tmx file itself.
+    image.src = new URL(imageSource, new URL(tmxUrl, document.baseURI)).href;
+    await image.decode();
+    return image;
+  }
+);
 
 let loaded;
 try {
-  loaded = await loadLevel(LEVEL_URL);
+  loaded = await levels.load('level1');
 } catch (err) {
   ctx.fillStyle = '#ff6b6b';
   ctx.font = '16px sans-serif';
   ctx.fillText(`Cannot load level: ${err.message}`, 20, 40);
   throw err;
 }
-const { level, image: tilesetImage } = loaded;
-const map = level.tileMap; // collision, raycast and camera keep using "map" unchanged
+let currentName = loaded.name; // name of the level being played
+let { level, image: tilesetImage } = loaded;
+let map = level.tileMap; // collision, raycast and camera keep using "map" unchanged
 
 // ---- Game objects ----
 const input = new InputHandler();
 input.attach(canvas);
-const collision = new CollisionSystem(map);
-const hazards = new HazardSystem(level);
+let collision = new CollisionSystem(map);
+let hazards = new HazardSystem(level);
 const animator = new PlayerAnimator(); // squash, lean and gun kick values
-const bossZone = level.getZone('boss_trigger'); // null on levels without a boss
+let bossZone = level.getZone('boss_trigger'); // null on levels without a boss
 let wasInsideBossZone = false; // so the entry is reported once, not every step
 let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
 window.addEventListener('keydown', (e) => {
@@ -95,11 +100,17 @@ const noInput = { getMoveAxis: () => 0 }; // fake keyboard used while the player
 const grabScene = new Cutscene(
   [
     {
-      at: GRAB_TIMELINE.restartAt, // the screen is black: later this is where the cave level will be loaded
+      at: GRAB_TIMELINE.restartAt, // the screen is fully black: switch levels now
       run: () => {
-        player.respawn(level.spawnX, level.spawnY);
-        weapon.reset();
-        animator.reset();
+        if (preloadedLevel !== null) {
+          applyLevel(preloadedLevel);
+          preloadedLevel = null;
+        } else {
+          // No next level, or it did not load in time: just start this level again.
+          player.respawn(level.spawnX, level.spawnY);
+          weapon.reset();
+          animator.reset();
+        }
       },
     },
   ],
@@ -125,6 +136,43 @@ const player = new Player(
 );
 const tracers = new TracerSystem();
 const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
+
+// ---- Moving to another level ----
+let preloadedLevel = null; // the next level, loaded in the background while the scene plays
+
+/** Start loading the next level (if there is one) so it is ready when the screen is black. */
+function preloadNextLevel() {
+  const next = levels.nextName(currentName);
+  if (next === null) return;
+  preloadedLevel = null;
+  levels
+    .load(next)
+    .then((result) => {
+      preloadedLevel = result;
+    })
+    .catch((err) => console.warn('Next level not loaded:', err.message));
+}
+
+/**
+ * Switch the game to a loaded level: rebuild everything that depends on the
+ * map, and put the player at the new spawn point with a fresh weapon.
+ * @param {{name:string, level:Level, image:HTMLImageElement}} result from LevelManager.load()
+ */
+function applyLevel(result) {
+  currentName = result.name;
+  level = result.level;
+  tilesetImage = result.image;
+  map = level.tileMap;
+  collision = new CollisionSystem(map);
+  hazards = new HazardSystem(level);
+  bossZone = level.getZone('boss_trigger');
+  wasInsideBossZone = false;
+  weapon.map = map; // the weapon casts its pellet rays through the new map
+  weapon.reset();
+  animator.reset();
+  player.respawn(level.spawnX, level.spawnY);
+  console.log('Playing level:', currentName);
+}
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
@@ -172,7 +220,9 @@ function update(dt) {
     if (inside && !wasInsideBossZone) {
       grabScene.start();
       trackGrabSpot(); // where the hand will come out of the ground
-    }    wasInsideBossZone = inside;
+      preloadNextLevel(); // load the next level while the scene plays
+    }
+    wasInsideBossZone = inside;
   }
 }
 
