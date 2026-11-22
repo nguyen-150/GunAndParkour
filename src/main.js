@@ -19,6 +19,7 @@ import { Camera } from './render/Camera.js';
 import { Background, THEMES } from './render/Background.js';
 import { Parallax, LAYER_SETS } from './render/Parallax.js';
 import { Atmosphere } from './render/Atmosphere.js';
+import { BossBackdrop } from './render/BossBackdrop.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -53,13 +54,14 @@ window.addEventListener('resize', resizeCanvas);
 let theme;
 let background;
 let parallax;
+let hasBoss = false; // true on levels with the skeleton boss in the background
 const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
 
 // ---- Levels: loaded by name, so the game can move from one level to the next ----
 const levels = new LevelManager(
   {
     level1: { url: './assets/maps/level1.tmx', next: 'cave', theme: 'sunset' },
-    cave: { url: './assets/maps/cave.tmx', theme: 'cave' },
+    cave: { url: './assets/maps/cave.tmx', theme: 'cave', boss: true },
   },
   (url) => TmxLoader.load(url),
   async (imageSource, tmxUrl) => {
@@ -94,8 +96,14 @@ const animator = new PlayerAnimator(); // squash, lean and gun kick values
 let bossZone = level.getZone('boss_trigger'); // null on levels without a boss
 let wasInsideBossZone = false; // so the entry is reported once, not every step
 let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
+let bossEyes = 1; // debug (Z view): press E to cycle the eye glow 0, 0.5, 1
+let bossJaw = false; // debug (Z view): press J to open or close the jaw
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyZ' && !e.repeat) showZones = !showZones;
+  if (e.repeat) return;
+  if (e.code === 'KeyZ') showZones = !showZones;
+  if (!showZones) return; // the boss test keys work only in the debug view
+  if (e.code === 'KeyE') bossEyes = bossEyes >= 1 ? 0 : bossEyes + 0.5;
+  if (e.code === 'KeyJ') bossJaw = !bossJaw;
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -158,10 +166,12 @@ function preloadNextLevel() {
 
 /** Rebuild the sky and the parallax layers for the theme of a level ("sunset" or "cave"). */
 function applyTheme(levelName) {
-  const name = levels.definition(levelName).theme ?? 'sunset';
+  const def = levels.definition(levelName);
+  const name = def.theme ?? 'sunset';
   theme = THEMES[name] ?? THEMES.sunset;
   background = new Background(ctx, camera.viewHeight, theme);
   parallax = new Parallax(camera.viewHeight, LAYER_SETS[name] ?? LAYER_SETS.sunset);
+  hasBoss = def.boss === true;
 }
 
 /**
@@ -304,6 +314,16 @@ try {
   console.warn('Hand sprite not loaded, the grab scene will have no hand:', err.message);
 }
 const grabHand = handStrip === null ? null : new GrabHand(handStrip);
+
+// The skeleton boss for levels flagged `boss: true`. Optional: the level plays without it.
+const BOSS_BOTTOM = 570; // world y of the bottom edge of the skeleton picture
+let bossStrip = null;
+try {
+  bossStrip = await loadImage('./assets/sprites/boss-head.png');
+} catch (err) {
+  console.warn('Boss picture not loaded, the cave will have no skeleton:', err.message);
+}
+const bossBackdrop = bossStrip === null ? null : new BossBackdrop(ctx, bossStrip);
 
 /** Draw the tiles inside the camera view: ground first, hazards on top. */
 function drawTiles() {
@@ -452,6 +472,10 @@ function render(alpha) {
   // World space: everything here is shifted by the camera position.
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
+  if (hasBoss && bossBackdrop !== null) {
+    // Behind the terrain, in front of the far parallax layers.
+    bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, performance.now() / 1000, bossEyes, bossJaw);
+  }
   drawTiles();
   drawGoalMarker();
   drawZones();
