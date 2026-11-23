@@ -65,6 +65,32 @@ export class BossBackdrop {
   }
 
   /**
+   * World position of an eye socket (ignores the small breathing and swaying).
+   * @param {number} index 0 = left, 1 = right
+   * @param {number} centerX world x of the middle of the skeleton
+   * @param {number} bottomY world y of the bottom edge of the sprite
+   * @param {{x:number, y:number}} out reused result, so nothing is allocated
+   * @returns {{x:number, y:number}} out
+   */
+  eyePosition(index, centerX, bottomY, out) {
+    out.x = centerX + EYES[index].x;
+    out.y = bottomY - this.height + EYES[index].y;
+    return out;
+  }
+
+  /**
+   * Brightness of the eyes, 0 to 1: the eye level with a flicker. Used by the
+   * drawing and by the lighting, so both flicker together.
+   * @param {number} clock time in seconds (visual only)
+   * @param {number} eyeLevel 0 = dark, 1 = lit
+   */
+  eyeBrightness(clock, eyeLevel) {
+    // Two sines of different speed: the light never flickers in a visible rhythm.
+    const flicker = 0.86 + 0.1 * Math.sin(clock * 11) + 0.04 * Math.sin(clock * 29 + 1.3);
+    return Math.min(1, eyeLevel * flicker);
+  }
+
+  /**
    * Draw the skeleton in world space, breathing and swaying, with eyes that follow a target.
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} centerX world x of the middle of the skeleton
@@ -111,10 +137,8 @@ export class BossBackdrop {
         }
       }
 
-      // Two sines of different speed: the light never flickers in a visible rhythm.
-      const flicker = 0.86 + 0.1 * Math.sin(clock * 11) + 0.04 * Math.sin(clock * 29 + 1.3);
-      const alpha = Math.min(1, eyeLevel * flicker);
-
+      const alpha = this.eyeBrightness(clock, eyeLevel);
+      
       ctx.globalCompositeOperation = 'lighter'; // add light instead of painting over the bones
       ctx.fillStyle = this.glow;
 

@@ -20,6 +20,7 @@ import { Background, THEMES } from './render/Background.js';
 import { Parallax, LAYER_SETS } from './render/Parallax.js';
 import { Atmosphere } from './render/Atmosphere.js';
 import { BossBackdrop } from './render/BossBackdrop.js';
+import { Lighting } from './render/Lighting.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -56,6 +57,10 @@ let background;
 let parallax;
 let hasBoss = false; // true on levels with the skeleton boss in the background
 const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
+// Dark levels (the cave): a light map is multiplied over the scene. The ambient light is
+// deliberately not black, so the platforms stay visible until lava lights the room.
+const lighting = new Lighting(undefined, '90, 62, 82');
+const eyePos = { x: 0, y: 0 }; // reused, so lighting the eyes allocates nothing
 
 // ---- Levels: loaded by name, so the game can move from one level to the next ----
 const levels = new LevelManager(
@@ -96,9 +101,12 @@ const animator = new PlayerAnimator(); // squash, lean and gun kick values
 let bossZone = level.getZone('boss_trigger'); // null on levels without a boss
 let wasInsideBossZone = false; // so the entry is reported once, not every step
 let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
+
 // Pose of the skeleton, updated every frame and reused (nothing is allocated). Debug keys, in the Z view:
-// E cycles the eye glow (0, 0.5, 1), J opens or closes the jaw, R makes it roar (pulse and shake).
+// E cycles the eye glow (0, 0.5, 1), J opens or closes the jaw, R makes it roar (pulse and shake),
+// L cycles the darkness of dark levels (1, 0.5, 0).
 const bossPose = { clock: 0, eyeLevel: 1, jawOpen: false, roar: 0, targetX: null, targetY: 0 };
+let lightStrength = 1;
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'KeyZ') showZones = !showZones;
@@ -106,6 +114,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') bossPose.eyeLevel = bossPose.eyeLevel >= 1 ? 0 : bossPose.eyeLevel + 0.5;
   if (e.code === 'KeyJ') bossPose.jawOpen = !bossPose.jawOpen;
   if (e.code === 'KeyR') bossPose.roar = bossPose.roar > 0 ? 0 : 1;
+  if (e.code === 'KeyL') lightStrength = lightStrength <= 0 ? 1 : lightStrength - 0.5;
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -504,6 +513,23 @@ function render(alpha) {
     grabHand.draw(ctx, sceneT, grabSpot.x, grabSpot.groundY, grabSpot.groundY - player.height / 2);
   }
   ctx.restore();
+
+    // Dark levels: a light map (ambient darkness plus colored lights) is multiplied over the scene.
+  if (theme.dark) {
+    lighting.begin(canvas.width, canvas.height);
+    if (hasBoss && bossBackdrop !== null) {
+      // Both eyes shine with the same flicker as their drawing.
+      const brightness = bossBackdrop.eyeBrightness(bossPose.clock, bossPose.eyeLevel);
+      for (let i = 0; i < 2; i++) {
+        bossBackdrop.eyePosition(i, map.pixelWidth / 2, BOSS_BOTTOM, eyePos);
+        lighting.addLight('eye', eyePos.x - camera.x, eyePos.y - camera.y, 260, brightness);
+      }
+    }
+    if (!player.dead && !playerGrabbed) {
+      lighting.addLight('warm', px - camera.x, py - camera.y, 130, 0.85); // a small light around the player
+    }
+    lighting.end(ctx, lightStrength);
+  }
 
   atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
   // Screen space: the HUD stays fixed on the screen.
