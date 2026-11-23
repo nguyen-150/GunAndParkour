@@ -96,14 +96,16 @@ const animator = new PlayerAnimator(); // squash, lean and gun kick values
 let bossZone = level.getZone('boss_trigger'); // null on levels without a boss
 let wasInsideBossZone = false; // so the entry is reported once, not every step
 let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
-let bossEyes = 1; // debug (Z view): press E to cycle the eye glow 0, 0.5, 1
-let bossJaw = false; // debug (Z view): press J to open or close the jaw
+// Pose of the skeleton, updated every frame and reused (nothing is allocated). Debug keys, in the Z view:
+// E cycles the eye glow (0, 0.5, 1), J opens or closes the jaw, R makes it roar (pulse and shake).
+const bossPose = { clock: 0, eyeLevel: 1, jawOpen: false, roar: 0, targetX: null, targetY: 0 };
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'KeyZ') showZones = !showZones;
   if (!showZones) return; // the boss test keys work only in the debug view
-  if (e.code === 'KeyE') bossEyes = bossEyes >= 1 ? 0 : bossEyes + 0.5;
-  if (e.code === 'KeyJ') bossJaw = !bossJaw;
+  if (e.code === 'KeyE') bossPose.eyeLevel = bossPose.eyeLevel >= 1 ? 0 : bossPose.eyeLevel + 0.5;
+  if (e.code === 'KeyJ') bossPose.jawOpen = !bossPose.jawOpen;
+  if (e.code === 'KeyR') bossPose.roar = bossPose.roar > 0 ? 0 : 1;
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -474,8 +476,10 @@ function render(alpha) {
   ctx.translate(-camera.x, -camera.y);
   if (hasBoss && bossBackdrop !== null) {
     // Behind the terrain, in front of the far parallax layers.
-    bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, performance.now() / 1000, bossEyes, bossJaw);
-  }
+    bossPose.clock = performance.now() / 1000; // visual only
+    bossPose.targetX = px; // the eyes follow the player (interpolated position, world space)
+    bossPose.targetY = py;
+    bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, bossPose);  }
   drawTiles();
   drawGoalMarker();
   drawZones();
