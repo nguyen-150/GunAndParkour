@@ -63,9 +63,12 @@ export class Lighting {
    * Start a frame: reset the light map to the ambient color.
    * @param {number} width visible width in px
    * @param {number} height visible height in px
+   * @param {number} [ambientLevel] how much of the ambient light is on: 1 = as usual (default),
+   *   0 = complete darkness (only the lights you add will show). It is blended over black with
+   *   an opacity, so fading it creates no color strings.
    */
-  begin(width, height) {
-    if (this.canvas === null) {
+  begin(width, height, ambientLevel = 1) {
+      if (this.canvas === null) {
       this.canvas = this.createCanvas(width, height);
       this.g = this.canvas.getContext('2d');
       // One unit gradient per kind of light, built once.
@@ -86,8 +89,14 @@ export class Lighting {
     const g = this.g;
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
-    g.fillStyle = this.ambientFill;
-    g.fillRect(0, 0, width, height); // opaque, so the previous frame is fully replaced
+    g.fillStyle = '#000000';
+    g.fillRect(0, 0, width, height); // opaque black: the previous frame is fully replaced
+    if (ambientLevel > 0) {
+      g.globalAlpha = Math.min(1, ambientLevel); // the ambient color over black, at this opacity
+      g.fillStyle = this.ambientFill;
+      g.fillRect(0, 0, width, height);
+      g.globalAlpha = 1;
+    }
   }
 
   /**
