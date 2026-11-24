@@ -21,6 +21,7 @@ import { Parallax, LAYER_SETS } from './render/Parallax.js';
 import { Atmosphere } from './render/Atmosphere.js';
 import { BossBackdrop } from './render/BossBackdrop.js';
 import { Lighting } from './render/Lighting.js';
+import { Lava } from './render/Lava.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -115,6 +116,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ') bossPose.jawOpen = !bossPose.jawOpen;
   if (e.code === 'KeyR') bossPose.roar = bossPose.roar > 0 ? 0 : 1;
   if (e.code === 'KeyL') lightStrength = lightStrength <= 0 ? 1 : lightStrength - 0.5;
+  if (e.code === 'KeyV') setLavaMode((lavaMode + 1) % 3); // none, pool, flooded room
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -199,6 +201,7 @@ function applyLevel(result) {
   collision = new CollisionSystem(map);
   hazards = new HazardSystem(level);
   bossZone = level.getZone('boss_trigger');
+  makeLava();
   wasInsideBossZone = false;
   weapon.map = map; // the weapon casts its pellet rays through the new map
   weapon.reset();
@@ -206,6 +209,45 @@ function applyLevel(result) {
   player.respawn(level.spawnX, level.spawnY);
   console.log('Playing level:', currentName);
 }
+
+
+// ---- Lava (levels with a `lava_pool` rectangle in Tiled) ----
+let lava = null;
+let lavaZone = null;
+let lavaMode = 0; // debug (V in the Z view): 0 no lava, 1 the pool, 2 the flooded room
+
+/** Build the lava pool of the current level from its `lava_pool` zone (null when there is none). */
+function makeLava() {
+  lavaZone = level.getZone('lava_pool');
+  lava =
+    lavaZone === null
+      ? null
+      : new Lava(ctx, {
+          x0: lavaZone.x,
+          x1: lavaZone.x + lavaZone.width,
+          bottom: lavaZone.y + lavaZone.height,
+        });
+  setLavaMode(0);
+}
+
+/** Debug: put the lava in one of three states. The real scene will animate `lava.level` instead. */
+function setLavaMode(mode) {
+  lavaMode = mode;
+  if (lava === null) return;
+  if (mode === 0) {
+    lava.level = lava.bottom; // empty
+  } else if (mode === 1) {
+    lava.x0 = lavaZone.x; // just the pool between the ledges
+    lava.x1 = lavaZone.x + lavaZone.width;
+    lava.level = 512; // below the surface of the ledges
+  } else {
+    lava.x0 = 0; // the whole room
+    lava.x1 = map.pixelWidth;
+    lava.level = 400; // only the center platform stays above it
+  }
+}
+makeLava();
+
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
 /** Advance the simulation by one fixed step of dt seconds. */
@@ -452,6 +494,7 @@ function render(alpha) {
   const px = player.prevX + (player.x - player.prevX) * alpha + player.width / 2;
   const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
   camera.follow(px, py, map.pixelWidth, map.pixelHeight);
+  const lavaClock = performance.now() / 1000; // visual only: ripples and flicker
   
   // Scripted scene effects follow the interpolated scene time, so they stay smooth at any frame rate.
   const tl = GRAB_TIMELINE;
@@ -490,6 +533,7 @@ function render(alpha) {
     bossPose.targetY = py;
     bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, bossPose);  }
   drawTiles();
+  if (lava !== null) lava.draw(ctx, lavaClock); // after the terrain, so rising lava covers the platforms
   drawGoalMarker();
   drawZones();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
@@ -517,6 +561,7 @@ function render(alpha) {
     // Dark levels: a light map (ambient darkness plus colored lights) is multiplied over the scene.
   if (theme.dark) {
     lighting.begin(canvas.width, canvas.height);
+    if (lava !== null) lava.addLights(lighting, camera, lavaClock);    
     if (hasBoss && bossBackdrop !== null) {
       // Both eyes shine with the same flicker as their drawing.
       const brightness = bossBackdrop.eyeBrightness(bossPose.clock, bossPose.eyeLevel);
