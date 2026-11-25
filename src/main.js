@@ -22,6 +22,8 @@ import { Atmosphere } from './render/Atmosphere.js';
 import { BossBackdrop } from './render/BossBackdrop.js';
 import { Lighting } from './render/Lighting.js';
 import { Lava } from './render/Lava.js';
+import { LavaFalls } from './render/LavaFalls.js';
+import { CAVE_INTRO, createIntroPose, sampleIntro } from './render/CaveIntro.js';
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
@@ -117,6 +119,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') bossPose.roar = bossPose.roar > 0 ? 0 : 1;
   if (e.code === 'KeyL') lightStrength = lightStrength <= 0 ? 1 : lightStrength - 0.5;
   if (e.code === 'KeyV') setLavaMode((lavaMode + 1) % 3); // none, pool, flooded room
+  if (e.code === 'KeyI' && hasBoss) startIntro(); // replay the opening scene of the boss cave
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -207,6 +210,14 @@ function applyLevel(result) {
   weapon.reset();
   animator.reset();
   player.respawn(level.spawnX, level.spawnY);
+  // Boss levels open with a scripted scene; other levels reset what that scene controls.
+  if (hasBoss) {
+    startIntro();
+  } else {
+    ambientLevel = 1;
+    fallsFlow = 0;
+    bossBarAlpha = 0;
+  }
   console.log('Playing level:', currentName);
 }
 
@@ -214,6 +225,7 @@ function applyLevel(result) {
 // ---- Lava (levels with a `lava_pool` rectangle in Tiled) ----
 let lava = null;
 let lavaZone = null;
+let lavaRest = 0; // world y of the lava surface once the room has filled up
 let lavaMode = 0; // debug (V in the Z view): 0 no lava, 1 the pool, 2 the flooded room
 
 /** Build the lava pool of the current level from its `lava_pool` zone (null when there is none). */
@@ -227,10 +239,11 @@ function makeLava() {
           x1: lavaZone.x + lavaZone.width,
           bottom: lavaZone.y + lavaZone.height,
         });
+  lavaRest = lavaZone === null ? 0 : lavaZone.y + 64; // 64 px below the top of the zone
   setLavaMode(0);
 }
 
-/** Debug: put the lava in one of three states. The real scene will animate `lava.level` instead. */
+/** Debug: put the lava in one of three states. The cave intro animates `lava.level` instead. */
 function setLavaMode(mode) {
   lavaMode = mode;
   if (lava === null) return;
@@ -239,14 +252,85 @@ function setLavaMode(mode) {
   } else if (mode === 1) {
     lava.x0 = lavaZone.x; // just the pool between the ledges
     lava.x1 = lavaZone.x + lavaZone.width;
-    lava.level = 512; // below the surface of the ledges
+    lava.level = lavaRest;
   } else {
     lava.x0 = 0; // the whole room
     lava.x1 = map.pixelWidth;
-    lava.level = 400; // only the center platform stays above it
+    lava.level = lavaZone.y - 48; // only something higher than this stays above the lava
   }
 }
 makeLava();
+
+// ---- Opening scene of the boss cave (timeline in CaveIntro.js) ----
+const lavaFalls = new LavaFalls(ctx);
+const fallsSpots = [
+  { x: 0, floorY: 0 },
+  { x: 0, floorY: 0 },
+]; // where the two streams pour: along the inner faces of the two side walls
+let fallsFlow = 0; // 0 to 1, how much lava the streams carry
+let ambientLevel = 1; // 1 = normal light, 0 = darkness (the intro fades it in)
+let bossBarAlpha = 0; // opacity of the boss health bar (placeholder: always full)
+const introPose = createIntroPose(); // reused every frame, nothing is allocated
+const introScene = new Cutscene(
+  [{ at: CAVE_INTRO.duration, run: () => finishIntro() }],
+  CAVE_INTRO.duration
+);
+
+/** Find where the two streams pour: the inner faces of the side walls, read on a row above the platforms. */
+function findFallsSpots() {
+  const ts = map.tileSize;
+  const row = 5;
+  let left = 0;
+  while (left < map.width && map.isSolid(left, row)) left++;
+  let right = map.width - 1;
+  while (right >= 0 && map.isSolid(right, row)) right--;
+  const columns = [left, right];
+  fallsSpots[0].x = left * ts + 14; // 14 = half the width of a full stream, so it runs along the wall
+  fallsSpots[1].x = (right + 1) * ts - 14;
+  for (let i = 0; i < 2; i++) {
+    // The stream ends on the first solid tile below the ceiling, or at the bottom of the map.
+    let r = 0;
+    while (r < map.height && !map.isSolid(columns[i], r)) r++;
+    fallsSpots[i].floorY = r * ts;
+  }
+}
+
+/** World y where a stream ends: the lava surface, or the ledge or floor if that is higher. */
+function fallsBottom(spot) {
+  return lava !== null && lava.active ? Math.min(spot.floorY, lava.level) : spot.floorY;
+}
+
+/** Start the opening scene of the boss cave. The player has no control until it ends. */
+function startIntro() {
+  findFallsSpots();
+  bossPose.eyeLevel = 0; // everything starts dark and quiet
+  bossPose.jawOpen = false;
+  bossPose.roar = 0;
+  fallsFlow = 0;
+  ambientLevel = 0;
+  bossBarAlpha = 0;
+  if (lava !== null) {
+    lava.x0 = lavaZone.x;
+    lava.x1 = lavaZone.x + lavaZone.width;
+    lava.level = lava.bottom; // empty: the scene raises it
+    lava.glow = 0;
+  }
+  introScene.start();
+}
+
+/** The scene is over: everything stays at its final value and the player gets control back. */
+function finishIntro() {
+  bossPose.eyeLevel = 1;
+  bossPose.jawOpen = false;
+  bossPose.roar = 0;
+  fallsFlow = 0;
+  ambientLevel = 1;
+  bossBarAlpha = 1;
+  if (lava !== null) {
+    lava.level = lavaRest;
+    lava.glow = 1;
+  }
+}
 
 const aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
 
@@ -266,16 +350,19 @@ function update(dt) {
     return;
   }
 
-  // Scripted scene: no input, no firing, and nothing can kill the player.
-  if (grabScene.active) {
-    grabScene.update(dt);
+  // Scripted scenes: no input, no firing, and nothing can kill the player.
+  if (grabScene.active || introScene.active) {
+    if (grabScene.active) {
+      grabScene.update(dt);
+      // Until the hand appears, follow the player so it rises exactly where he ended up (he may still slide or fall).
+      if (grabScene.time < GRAB_TIMELINE.rise[0]) trackGrabSpot();
+    }
+    if (introScene.active) introScene.update(dt);
     player.update(dt, noInput, collision);
     animator.update(dt, player);
-    // Until the hand appears, follow the player so it rises exactly where he ended up (he may still slide or fall).
-    if (grabScene.time < GRAB_TIMELINE.rise[0]) trackGrabSpot();
     return;
   }
-
+  
   // Fire before moving the player, so the recoil is applied in this very step.
   if (input.mouseDown) {
     const dx = camera.screenToWorldX(input.mouseX) - weapon.handX(player);
@@ -454,6 +541,22 @@ function drawGoalMarker() {
   ctx.stroke();
 }
 
+/** Boss health bar at the top of the screen. Placeholder: the boss has no health yet, so it is always full. */
+function drawBossBar(alpha) {
+  if (alpha <= 0) return;
+  const w = Math.min(520, canvas.width - 80);
+  const x = Math.round((canvas.width - w) / 2);
+  const y = 22;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#1a0a0a';
+  ctx.fillRect(x - 3, y - 3, w + 6, 20); // dark frame
+  ctx.fillStyle = '#b3141b';
+  ctx.fillRect(x, y, w, 14); // the red bar
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.fillRect(x, y, w, 3); // highlight on top
+  ctx.globalAlpha = 1;
+}
+
 /** Debug view (toggle with Z): the level's zones in blue and the player's hitbox in green. */
 function drawZones() {
   if (!showZones) return;
@@ -495,7 +598,26 @@ function render(alpha) {
   const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
   camera.follow(px, py, map.pixelWidth, map.pixelHeight);
   const lavaClock = performance.now() / 1000; // visual only: ripples and flicker
-  
+
+  // Opening scene of the boss cave: sample the timeline at the interpolated scene time and
+  // apply it to the eyes, the jaw, the streams, the lava, the light and the health bar.
+  let introShakeX = 0;
+  let introShakeY = 0;
+  if (introScene.active) {
+    const s = sampleIntro(introScene.time + alpha * CONFIG.loop.fixedStep, introPose);
+    bossPose.eyeLevel = s.eyeLevel;
+    bossPose.jawOpen = s.jawOpen;
+    bossPose.roar = s.roar;
+    fallsFlow = s.falls;
+    ambientLevel = s.ambient;
+    bossBarAlpha = s.hud;
+    if (lava !== null) {
+      lava.level = lava.bottom - (lava.bottom - lavaRest) * s.lavaRise; // 0 = empty, 1 = resting level
+      lava.glow = s.glow;
+    }
+    introShakeX = Math.round(Math.sin(lavaClock * 90) * s.shake);
+    introShakeY = Math.round(Math.cos(lavaClock * 70) * s.shake);
+  }  
   // Scripted scene effects follow the interpolated scene time, so they stay smooth at any frame rate.
   const tl = GRAB_TIMELINE;
   const sceneT = grabScene.active ? grabScene.time + alpha * CONFIG.loop.fixedStep : 0;
@@ -517,7 +639,7 @@ function render(alpha) {
   // From the moment the fist closes until the restart, the player is inside the hand.
   const playerGrabbed = grabScene.active && sceneT >= tl.grabAt && sceneT < tl.restartAt;
   ctx.save();
-  ctx.translate(shakeX, shakeY); // the whole picture shakes; the HUD and the fade are drawn after restore
+  ctx.translate(shakeX + introShakeX, shakeY + introShakeY); // the whole picture shakes; the HUD and the fade are drawn after restore  
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
   if (theme.mist) atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
@@ -534,6 +656,11 @@ function render(alpha) {
     bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, bossPose);  }
   drawTiles();
   if (lava !== null) lava.draw(ctx, lavaClock); // after the terrain, so rising lava covers the platforms
+  if (hasBoss && fallsFlow > 0) {
+    for (let i = 0; i < 2; i++) {
+      lavaFalls.draw(ctx, lavaClock, fallsSpots[i].x, 0, fallsBottom(fallsSpots[i]), fallsFlow);
+    }
+  }
   drawGoalMarker();
   drawZones();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
@@ -560,8 +687,13 @@ function render(alpha) {
 
     // Dark levels: a light map (ambient darkness plus colored lights) is multiplied over the scene.
   if (theme.dark) {
-    lighting.begin(canvas.width, canvas.height);
-    if (lava !== null) lava.addLights(lighting, camera, lavaClock);    
+    lighting.begin(canvas.width, canvas.height, ambientLevel);
+    if (lava !== null) lava.addLights(lighting, camera, lavaClock);
+    if (hasBoss && fallsFlow > 0) {
+      for (let i = 0; i < 2; i++) {
+        lavaFalls.addLights(lighting, camera, lavaClock, fallsSpots[i].x, 0, fallsBottom(fallsSpots[i]), fallsFlow);
+      }
+    }    
     if (hasBoss && bossBackdrop !== null) {
       // Both eyes shine with the same flicker as their drawing.
       const brightness = bossBackdrop.eyeBrightness(bossPose.clock, bossPose.eyeLevel);
@@ -577,6 +709,7 @@ function render(alpha) {
   }
 
   atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
+  drawBossBar(bossBarAlpha); // the boss health bar fades in at the end of the cave intro
   // Screen space: the HUD stays fixed on the screen.
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
@@ -611,5 +744,6 @@ function render(alpha) {
 
 const tuningPanel = new TuningPanel(); // remembers start-up values for the Reset button
 tuningPanel.mount(); // press P in the game to show or hide it
+if (hasBoss) startIntro(); // useful when the game starts directly in a boss level (for testing)
 const game = new Game({ update, render });
 game.start();

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="50" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="5" nextobjectid="25">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="50" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="5" nextobjectid="26">
  <tileset firstgid="1" name="tiles" tilewidth="32" tileheight="32" tilecount="4" columns="2">
   <image source="../tilesets/cave-tiles.png" width="64" height="64"/>
  </tileset>
@@ -55,5 +55,6 @@
   <object id="5" name="player_spawn" x="800" y="479.333">
    <point/>
   </object>
+  <object id="25" name="lava_pool" x="160" y="487.333" width="1279.33" height="152"/>
  </objectgroup>
 </map>
