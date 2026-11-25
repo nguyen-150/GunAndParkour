@@ -2,7 +2,7 @@
 // Streams of lava pouring from the ceiling, drawn in code.
 
 const PIXEL = 4; // px, everything is built from 4 px blocks like the rest of the art
-const MAX_WIDTH = 28; // px, width of a stream at full flow
+const MAX_WIDTH = 84; // px, width of a stream at full flow
 const STREAKS = 7; // bright bands that run down each stream
 const STREAK_HEIGHT = 36; // px
 const STREAK_COLOR = '#fff0b0';

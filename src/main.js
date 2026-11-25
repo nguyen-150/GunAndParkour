@@ -285,8 +285,8 @@ function findFallsSpots() {
   let right = map.width - 1;
   while (right >= 0 && map.isSolid(right, row)) right--;
   const columns = [left, right];
-  fallsSpots[0].x = left * ts + 14; // 14 = half the width of a full stream, so it runs along the wall
-  fallsSpots[1].x = (right + 1) * ts - 14;
+  fallsSpots[0].x = left * ts + 42; // 42 = half the width of a full stream, so it runs along the wall
+  fallsSpots[1].x = (right + 1) * ts - 42;
   for (let i = 0; i < 2; i++) {
     // The stream ends on the first solid tile below the ceiling, or at the bottom of the map.
     let r = 0;
