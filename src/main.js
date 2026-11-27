@@ -488,72 +488,6 @@ function drawTiles() {
   }
 }
 
-/**
- * Draw the aim line from the barrel end to the first wall (or max range).
- * It starts at the same hand position and angle as the gun picture, so it
- * stays glued to the gun while flying fast.
- * @param {number} ox world x of the hand (the interpolated one used to draw the gun)
- * @param {number} oy world y of the hand
- * @param {number} angle aim direction in radians
- */
-function drawAim(ox, oy, angle) {
-  const ux = Math.cos(angle);
-  const uy = Math.sin(angle);
-
-  const range = CONFIG.weapon.range;
-  const hit = castRay(map, ox, oy, ux, uy, range, aimHit);
-  const dist = hit ? aimHit.distance : range;
-
-  // Start at the barrel end, but never past the wall.
-  const start = Math.min(CONFIG.gun.muzzleLength, dist);
-
-  ctx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(ox + ux * start, oy + uy * start);
-  ctx.lineTo(ox + ux * dist, oy + uy * dist);
-  ctx.stroke();
-
-  if (hit) {
-    ctx.fillStyle = '#ff5050';
-    ctx.fillRect(ox + ux * dist - 3, oy + uy * dist - 3, 6, 6); // dot where the ray meets the wall
-  }
-}
-
-/** Debug view (toggle with Z): the level's zones in blue and the player's hitbox in green. */
-function drawZones() {
-  if (!showZones) return;
-  ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(80, 200, 255, 0.25)';
-  ctx.strokeStyle = 'rgba(80, 200, 255, 0.9)';
-  for (let i = 0; i < level.zones.length; i++) {
-    const z = level.zones[i];
-    ctx.fillRect(z.x, z.y, z.width, z.height);
-    ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.width - 1, z.height - 1);
-  }
-  ctx.strokeStyle = 'rgba(120, 255, 120, 0.9)';
-  ctx.strokeRect(Math.round(player.x) + 0.5, Math.round(player.y) + 0.5, player.width, player.height);
-}
-
-/**
- * Draw the gun turning around the hand toward the aim angle.
- * @param {number} handX world x of the hand (whole pixels)
- * @param {number} handY world y of the hand (whole pixels)
- * @param {number} angle aim direction in radians
- */
-function drawGun(handX, handY, angle) {
-  const g = CONFIG.gun;
-  ctx.save();
-  ctx.translate(handX, handY);
-  ctx.rotate(angle);
-  ctx.translate(-Math.round(animator.gunKick), 0); // kick: slide back along the barrel
-  // Aiming left, a plain rotation would turn the gun upside down: mirror it
-  // across the barrel axis so the stock stays below the barrel.
-  if (Math.cos(angle) < 0) ctx.scale(1, -1);
-  ctx.drawImage(gunSprite, -g.pivotX, -g.pivotY);
-  ctx.restore();
-}
-
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
   // Follow the interpolated player position so the camera does not jitter.
@@ -624,7 +558,7 @@ function render(alpha) {
     }
   }
   gameScreen.drawGoalMarker(bossZone);
-  drawZones();
+  if (showZones) gameScreen.drawZones(level, player);
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
   if (!playerGrabbed) player.render(ctx, alpha, playerSprite, facing, runStrip, airStrip, animator);  // One hand position and one aim angle per frame, shared by the gun picture and
@@ -636,11 +570,11 @@ function render(alpha) {
     camera.screenToWorldY(input.mouseY) - handY,
     camera.screenToWorldX(input.mouseX) - handX
   );
-  if (gunSprite !== null && !player.dead && !playerGrabbed) drawGun(handX, handY, aimAngle);
+  if (gunSprite !== null && !player.dead && !playerGrabbed) gameScreen.drawGun(gunSprite, animator, handX, handY, aimAngle);
 
   tracers.render(ctx);
-  if (!player.dead && !grabScene.active) drawAim(handX, handY, aimAngle);
-
+  if (!player.dead && !grabScene.active) gameScreen.drawAim(map, handX, handY, aimAngle);
+  
   // The skeleton's hand is drawn last in the world, so it is in front of the player and the gun.
   if (grabHand !== null && grabScene.active) {
     grabHand.draw(ctx, sceneT, grabSpot.x, grabSpot.groundY, grabSpot.groundY - player.height / 2);
