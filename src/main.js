@@ -27,9 +27,11 @@ import { CAVE_INTRO, createIntroPose, sampleIntro } from './render/CaveIntro.js'
 import { TracerSystem } from './render/TracerSystem.js';
 import { TuningPanel } from './render/TuningPanel.js';
 import { PlayerAnimator } from './render/PlayerAnimator.js';
+import { GameScreen } from './screens/GameScreen.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+const gameScreen = new GameScreen(ctx, canvas); // drawing helpers are moving here (task A0)
 
 // Fixed view height, view width follows the window aspect ratio (see Camera).
 const camera = new Camera(
@@ -518,45 +520,6 @@ function drawAim(ox, oy, angle) {
   }
 }
 
-/**
- * Draw a bobbing triangle above the boss trigger zone, pointing down at it.
- * It only marks where the level ends and says nothing about what waits there.
- */
-function drawGoalMarker() {
-  if (bossZone === null) return;
-  const cx = Math.round(bossZone.x + bossZone.width / 2);
-  // The bobbing is visual only: it reads the clock but never touches the simulation.
-  const bob = Math.round(Math.sin(performance.now() / 300) * 4);
-  const tip = bossZone.y - 10 + bob; // the point of the triangle, just above the zone
-
-  ctx.beginPath();
-  ctx.moveTo(cx, tip);
-  ctx.lineTo(cx - 12, tip - 18);
-  ctx.lineTo(cx + 12, tip - 18);
-  ctx.closePath();
-  ctx.fillStyle = '#ffd36b';
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#3b2a14';
-  ctx.stroke();
-}
-
-/** Boss health bar at the top of the screen. Placeholder: the boss has no health yet, so it is always full. */
-function drawBossBar(alpha) {
-  if (alpha <= 0) return;
-  const w = Math.min(520, canvas.width - 80);
-  const x = Math.round((canvas.width - w) / 2);
-  const y = 22;
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#1a0a0a';
-  ctx.fillRect(x - 3, y - 3, w + 6, 20); // dark frame
-  ctx.fillStyle = '#b3141b';
-  ctx.fillRect(x, y, w, 14); // the red bar
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.fillRect(x, y, w, 3); // highlight on top
-  ctx.globalAlpha = 1;
-}
-
 /** Debug view (toggle with Z): the level's zones in blue and the player's hitbox in green. */
 function drawZones() {
   if (!showZones) return;
@@ -643,7 +606,6 @@ function render(alpha) {
   background.draw(ctx, camera); // sky and sun, after camera.follow so the sun drifts with it
   parallax.draw(ctx, camera); // mountains between the sky and the world  
   if (theme.mist) atmosphere.drawMist(ctx, camera); // haze at the horizon, behind the terrain
-  ctx.restore(); // end of the shaken part of the picture
 
   // World space: everything here is shifted by the camera position.
   ctx.save();
@@ -661,7 +623,7 @@ function render(alpha) {
       lavaFalls.draw(ctx, lavaClock, fallsSpots[i].x, 0, fallsBottom(fallsSpots[i]), fallsFlow);
     }
   }
-  drawGoalMarker();
+  gameScreen.drawGoalMarker(bossZone);
   drawZones();
   ctx.imageSmoothingEnabled = false; // keep pixel art crisp (resizing the canvas resets this)
   const facing = camera.screenToWorldX(input.mouseX) < px ? -1 : 1; // face the mouse
@@ -684,6 +646,7 @@ function render(alpha) {
     grabHand.draw(ctx, sceneT, grabSpot.x, grabSpot.groundY, grabSpot.groundY - player.height / 2);
   }
   ctx.restore();
+  ctx.restore(); // end of the shaken part of the picture
 
     // Dark levels: a light map (ambient darkness plus colored lights) is multiplied over the scene.
   if (theme.dark) {
@@ -709,8 +672,7 @@ function render(alpha) {
   }
 
   atmosphere.drawVignette(ctx, camera); // dark edges over the world, under the HUD text
-  drawBossBar(bossBarAlpha); // the boss health bar fades in at the end of the cave intro
-  // Screen space: the HUD stays fixed on the screen.
+  gameScreen.drawBossBar(bossBarAlpha); // the boss health bar fades in at the end of the cave intro  // Screen space: the HUD stays fixed on the screen.
   ctx.fillStyle = '#f2f2f2';
   ctx.font = '14px sans-serif';
   ctx.textAlign = 'left';
