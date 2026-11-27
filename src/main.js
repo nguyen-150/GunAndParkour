@@ -390,25 +390,6 @@ function update(dt) {
   }
 }
 
-/** Draw the tiles inside the camera view, using pictures from the tileset image. */
-/** Draw the tileset picture of tile id gid at map position (col, row). */
-function drawTile(gid, col, row) {
-  const ts = map.tileSize;  
-  const { firstGid, columns } = level.tileset;
-  const index = gid - firstGid;
-  ctx.drawImage(
-    tilesetImage,
-    (index % columns) * ts, // position of the picture in the tileset image
-    Math.floor(index / columns) * ts,
-    ts,
-    ts,
-    col * ts, // position in the world
-    row * ts,
-    ts,
-    ts
-  );
-}
-
 /** Load one image and wait until it can be drawn. */
 async function loadImage(url) {
   const image = new Image();
@@ -466,27 +447,6 @@ try {
   console.warn('Boss picture not loaded, the cave will have no skeleton:', err.message);
 }
 const bossBackdrop = bossStrip === null ? null : new BossBackdrop(ctx, bossStrip);
-
-/** Draw the tiles inside the camera view: ground first, hazards on top. */
-function drawTiles() {
-  const ts = map.tileSize;
-
-  // Visible range of tiles, clamped to the map.
-  const firstCol = Math.max(0, Math.floor(camera.x / ts));
-  const lastCol = Math.min(map.width - 1, Math.floor((camera.x + camera.viewWidth) / ts));
-  const firstRow = Math.max(0, Math.floor(camera.y / ts));
-  const lastRow = Math.min(map.height - 1, Math.floor((camera.y + camera.viewHeight) / ts));
-
-  for (let row = firstRow; row <= lastRow; row++) {
-    for (let col = firstCol; col <= lastCol; col++) {
-      const ground = level.getGid(col, row);
-      if (ground !== 0) drawTile(ground, col, row);
-
-      const hazard = level.getHazardGid(col, row);
-      // Hazards marked visible: false (the abyss) still kill the player but are not drawn.
-      if (hazard !== 0 && CONFIG.hazards[hazard]?.visible !== false) drawTile(hazard, col, row);    }
-  }
-}
 
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
@@ -550,7 +510,7 @@ function render(alpha) {
     bossPose.targetX = px; // the eyes follow the player (interpolated position, world space)
     bossPose.targetY = py;
     bossBackdrop.draw(ctx, map.pixelWidth / 2, BOSS_BOTTOM, bossPose);  }
-  drawTiles();
+  gameScreen.drawTiles(level, tilesetImage, camera);
   if (lava !== null) lava.draw(ctx, lavaClock); // after the terrain, so rising lava covers the platforms
   if (hasBoss && fallsFlow > 0) {
     for (let i = 0; i < 2; i++) {
@@ -574,7 +534,7 @@ function render(alpha) {
 
   tracers.render(ctx);
   if (!player.dead && !grabScene.active) gameScreen.drawAim(map, handX, handY, aimAngle);
-  
+
   // The skeleton's hand is drawn last in the world, so it is in front of the player and the gun.
   if (grabHand !== null && grabScene.active) {
     grabHand.draw(ctx, sceneT, grabSpot.x, grabSpot.groundY, grabSpot.groundY - player.height / 2);
