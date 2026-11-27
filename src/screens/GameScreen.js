@@ -10,6 +10,10 @@
  */
 import { CONFIG } from '../config.js';
 import { castRay, createRayHit } from '../physics/Raycast.js';
+import { CollisionSystem } from '../physics/CollisionSystem.js';
+import { HazardSystem } from '../physics/HazardSystem.js';
+import { Background, THEMES } from '../render/Background.js';
+import { Parallax, LAYER_SETS } from '../render/Parallax.js';
 
 export class GameScreen {
   /**
@@ -20,6 +24,20 @@ export class GameScreen {
     this.ctx = ctx;
     this.canvas = canvas;
     this.aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
+
+    // ---- State of the level being played (filled by applyLevel / applyTheme) ----
+    this.currentName = null; // name of the level being played
+    this.level = null;
+    this.tilesetImage = null;
+    this.map = null; // level.tileMap, used by collision, raycast and camera
+    this.collision = null;
+    this.hazards = null;
+    this.bossZone = null; // null on levels without a boss
+    this.wasInsideBossZone = false; // so the entry is reported once, not every step
+    this.theme = null;
+    this.background = null;
+    this.parallax = null;
+    this.hasBoss = false; // true on levels with the skeleton boss in the background
   }
 
   /**
@@ -198,5 +216,35 @@ export class GameScreen {
         }
       }
     }
+  }
+
+  
+  /**
+   * Take over a loaded level: rebuild everything that depends on its map.
+   * Does not touch the player, the weapon or the scenes; the caller resets those.
+   * @param {{name:string, level:import('../level/Level.js').Level, image:CanvasImageSource}} result from LevelManager.load()
+   */
+  applyLevel(result) {
+    this.currentName = result.name;
+    this.level = result.level;
+    this.tilesetImage = result.image;
+    this.map = this.level.tileMap;
+    this.collision = new CollisionSystem(this.map);
+    this.hazards = new HazardSystem(this.level);
+    this.bossZone = this.level.getZone('boss_trigger');
+    this.wasInsideBossZone = false;
+  }
+
+  /**
+   * Rebuild the sky and the parallax layers for the theme of a level.
+   * @param {{theme?:string, boss?:boolean}} def the level definition from LevelManager
+   * @param {number} viewHeight visible height in px (camera.viewHeight)
+   */
+  applyTheme(def, viewHeight) {
+    const name = def.theme ?? 'sunset';
+    this.theme = THEMES[name] ?? THEMES.sunset;
+    this.background = new Background(this.ctx, viewHeight, this.theme);
+    this.parallax = new Parallax(viewHeight, LAYER_SETS[name] ?? LAYER_SETS.sunset);
+    this.hasBoss = def.boss === true;
   }
 }
