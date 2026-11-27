@@ -142,4 +142,61 @@ export class GameScreen {
       ctx.fillRect(ox + ux * dist - 3, oy + uy * dist - 3, 6, 6); // dot where the ray meets the wall
     }
   }
+
+  
+  /**
+   * Draw the tileset picture of tile id gid at map position (col, row) (world space).
+   * @param {{tileMap:{tileSize:number}, tileset:{firstGid:number, columns:number}}} level
+   * @param {CanvasImageSource} tilesetImage picture with all tiles in a grid
+   * @param {number} gid Tiled tile id (not 0)
+   * @param {number} col tile column
+   * @param {number} row tile row
+   */
+  drawTile(level, tilesetImage, gid, col, row) {
+    const ts = level.tileMap.tileSize;
+    const { firstGid, columns } = level.tileset;
+    const index = gid - firstGid;
+    this.ctx.drawImage(
+      tilesetImage,
+      (index % columns) * ts, // position of the picture in the tileset image
+      Math.floor(index / columns) * ts,
+      ts,
+      ts,
+      col * ts, // position in the world
+      row * ts,
+      ts,
+      ts
+    );
+  }
+
+  /**
+   * Draw the tiles inside the camera view: ground first, hazards on top (world space).
+   * Only the visible range is visited, so the cost does not grow with the map size.
+   * @param {import('../level/Level.js').Level} level
+   * @param {CanvasImageSource} tilesetImage
+   * @param {{x:number, y:number, viewWidth:number, viewHeight:number}} camera
+   */
+  drawTiles(level, tilesetImage, camera) {
+    const map = level.tileMap;
+    const ts = map.tileSize;
+
+    // Visible range of tiles, clamped to the map.
+    const firstCol = Math.max(0, Math.floor(camera.x / ts));
+    const lastCol = Math.min(map.width - 1, Math.floor((camera.x + camera.viewWidth) / ts));
+    const firstRow = Math.max(0, Math.floor(camera.y / ts));
+    const lastRow = Math.min(map.height - 1, Math.floor((camera.y + camera.viewHeight) / ts));
+
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let col = firstCol; col <= lastCol; col++) {
+        const ground = level.getGid(col, row);
+        if (ground !== 0) this.drawTile(level, tilesetImage, ground, col, row);
+
+        const hazard = level.getHazardGid(col, row);
+        // Hazards marked visible: false (the abyss) still kill the player but are not drawn.
+        if (hazard !== 0 && CONFIG.hazards[hazard]?.visible !== false) {
+          this.drawTile(level, tilesetImage, hazard, col, row);
+        }
+      }
+    }
+  }
 }
