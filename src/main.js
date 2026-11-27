@@ -10,14 +10,10 @@ import { InputHandler } from './core/InputHandler.js';
 import { Level } from './level/Level.js';
 import { LevelManager } from './level/LevelManager.js';
 import { TmxLoader } from './level/TmxLoader.js';
-import { CollisionSystem } from './physics/CollisionSystem.js';
-import { HazardSystem } from './physics/HazardSystem.js';
 import { Player } from './entities/Player.js';
 import { Weapon } from './entities/Weapon.js';
 import { castRay, createRayHit } from './physics/Raycast.js';
 import { Camera } from './render/Camera.js';
-import { Background, THEMES } from './render/Background.js';
-import { Parallax, LAYER_SETS } from './render/Parallax.js';
 import { Atmosphere } from './render/Atmosphere.js';
 import { BossBackdrop } from './render/BossBackdrop.js';
 import { Lighting } from './render/Lighting.js';
@@ -56,11 +52,6 @@ function resizeCanvas() {
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
-// The sky and the parallax layers depend on the level's theme: applyTheme() builds them.
-let theme;
-let background;
-let parallax;
-let hasBoss = false; // true on levels with the skeleton boss in the background
 const atmosphere = new Atmosphere(ctx); // mist and vignette gradients are created once, here
 // Dark levels (the cave): a light map is multiplied over the scene. The ambient light is
 // deliberately not black, so the platforms stay visible until lava lights the room.
@@ -92,19 +83,13 @@ try {
   ctx.fillText(`Cannot load level: ${err.message}`, 20, 40);
   throw err;
 }
-let currentName = loaded.name; // name of the level being played
-let { level, image: tilesetImage } = loaded;
-let map = level.tileMap; // collision, raycast and camera keep using "map" unchanged
-applyTheme(currentName); // sky and mountains for the first level
+gameScreen.applyLevel(loaded);
+gameScreen.applyTheme(levels.definition(gameScreen.currentName), camera.viewHeight); // sky and mountains for the first level
 
 // ---- Game objects ----
 const input = new InputHandler();
 input.attach(canvas);
-let collision = new CollisionSystem(map);
-let hazards = new HazardSystem(level);
 const animator = new PlayerAnimator(); // squash, lean and gun kick values
-let bossZone = level.getZone('boss_trigger'); // null on levels without a boss
-let wasInsideBossZone = false; // so the entry is reported once, not every step
 let showZones = false; // debug view: press Z to draw the zones and the player's hitbox
 
 // Pose of the skeleton, updated every frame and reused (nothing is allocated). Debug keys, in the Z view:
@@ -121,7 +106,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') bossPose.roar = bossPose.roar > 0 ? 0 : 1;
   if (e.code === 'KeyL') lightStrength = lightStrength <= 0 ? 1 : lightStrength - 0.5;
   if (e.code === 'KeyV') setLavaMode((lavaMode + 1) % 3); // none, pool, flooded room
-  if (e.code === 'KeyI' && hasBoss) startIntro(); // replay the opening scene of the boss cave
+  if (e.code === 'KeyI' && gameScreen.hasBoss) startIntro(); // replay the opening scene of the boss cave
 });
 
 // ---- Scripted scene: stepping into the boss trigger (the hand pulls the player down) ----
@@ -136,7 +121,7 @@ const grabScene = new Cutscene(
           preloadedLevel = null;
         } else {
           // No next level, or it did not load in time: just start this level again.
-          player.respawn(level.spawnX, level.spawnY);
+          player.respawn(gameScreen.level.spawnX, gameScreen.level.spawnY);          
           weapon.reset();
           animator.reset();
         }
@@ -153,25 +138,25 @@ const grabSpot = { x: 0, groundY: 0 };
 function trackGrabSpot() {
   const cx = player.x + player.width / 2;
   const feetY = player.y + player.height;
-  const hit = castRay(map, cx, feetY, 0, 1, 4096, aimHit);
+  const hit = castRay(gameScreen.map, cx, feetY, 0, 1, 4096, aimHit);  
   grabSpot.x = cx;
   grabSpot.groundY = hit ? feetY + aimHit.distance : feetY;
 }
 
 // The spawn point in the .tmx marks the player's feet (middle of the bottom edge).
 const player = new Player(
-  level.spawnX - CONFIG.player.width / 2,
-  level.spawnY - CONFIG.player.height
+  gameScreen.level.spawnX - CONFIG.player.width / 2,
+  gameScreen.level.spawnY - CONFIG.player.height
 );
 const tracers = new TracerSystem();
-const weapon = new Weapon(map, tracers); // map lets pellet rays stop at walls
+const weapon = new Weapon(gameScreen.map, tracers); // map lets pellet rays stop at walls
 
 // ---- Moving to another level ----
 let preloadedLevel = null; // the next level, loaded in the background while the scene plays
 
 /** Start loading the next level (if there is one) so it is ready when the screen is black. */
 function preloadNextLevel() {
-  const next = levels.nextName(currentName);
+  const next = levels.nextName(gameScreen.currentName);  
   if (next === null) return;
   preloadedLevel = null;
   levels
@@ -182,47 +167,29 @@ function preloadNextLevel() {
     .catch((err) => console.warn('Next level not loaded:', err.message));
 }
 
-/** Rebuild the sky and the parallax layers for the theme of a level ("sunset" or "cave"). */
-function applyTheme(levelName) {
-  const def = levels.definition(levelName);
-  const name = def.theme ?? 'sunset';
-  theme = THEMES[name] ?? THEMES.sunset;
-  background = new Background(ctx, camera.viewHeight, theme);
-  parallax = new Parallax(camera.viewHeight, LAYER_SETS[name] ?? LAYER_SETS.sunset);
-  hasBoss = def.boss === true;
-}
-
 /**
  * Switch the game to a loaded level: rebuild everything that depends on the
  * map, and put the player at the new spawn point with a fresh weapon.
  * @param {{name:string, level:Level, image:HTMLImageElement}} result from LevelManager.load()
  */
 function applyLevel(result) {
-  currentName = result.name;
-  applyTheme(currentName);
-  level = result.level;
-  tilesetImage = result.image;
-  map = level.tileMap;
-  collision = new CollisionSystem(map);
-  hazards = new HazardSystem(level);
-  bossZone = level.getZone('boss_trigger');
+  gameScreen.applyLevel(result); // level, map, collision, hazards, boss zone
+  gameScreen.applyTheme(levels.definition(result.name), camera.viewHeight);
   makeLava();
-  wasInsideBossZone = false;
-  weapon.map = map; // the weapon casts its pellet rays through the new map
+  weapon.map = gameScreen.map; // the weapon casts its pellet rays through the new map
   weapon.reset();
   animator.reset();
-  player.respawn(level.spawnX, level.spawnY);
+  player.respawn(gameScreen.level.spawnX, gameScreen.level.spawnY);
   // Boss levels open with a scripted scene; other levels reset what that scene controls.
-  if (hasBoss) {
+  if (gameScreen.hasBoss) {
     startIntro();
   } else {
     ambientLevel = 1;
     fallsFlow = 0;
     bossBarAlpha = 0;
   }
-  console.log('Playing level:', currentName);
+  console.log('Playing level:', gameScreen.currentName);
 }
-
 
 // ---- Lava (levels with a `lava_pool` rectangle in Tiled) ----
 let lava = null;
@@ -232,7 +199,7 @@ let lavaMode = 0; // debug (V in the Z view): 0 no lava, 1 the pool, 2 the flood
 
 /** Build the lava pool of the current level from its `lava_pool` zone (null when there is none). */
 function makeLava() {
-  lavaZone = level.getZone('lava_pool');
+  lavaZone = gameScreen.level.getZone('lava_pool');  
   lava =
     lavaZone === null
       ? null
@@ -257,7 +224,7 @@ function setLavaMode(mode) {
     lava.level = lavaRest;
   } else {
     lava.x0 = 0; // the whole room
-    lava.x1 = map.pixelWidth;
+    lava.x1 = gameScreen.map.pixelWidth;    
     lava.level = lavaZone.y - 48; // only something higher than this stays above the lava
   }
 }
@@ -280,6 +247,7 @@ const introScene = new Cutscene(
 
 /** Find where the two streams pour: the inner faces of the side walls, read on a row above the platforms. */
 function findFallsSpots() {
+  const map = gameScreen.map;
   const ts = map.tileSize;
   const row = 5;
   let left = 0;
@@ -343,9 +311,9 @@ function update(dt) {
 
   // Dead: only count the respawn delay down, then come back with a fresh weapon.
   if (player.dead) {
-    player.update(dt, input, collision);
+    player.update(dt, input, gameScreen.collision);
     if (player.canRespawn) {
-      player.respawn(level.spawnX, level.spawnY);
+      player.respawn(gameScreen.level.spawnX, gameScreen.level.spawnY);      
       weapon.reset();
       animator.reset();
     }
@@ -360,7 +328,7 @@ function update(dt) {
       if (grabScene.time < GRAB_TIMELINE.rise[0]) trackGrabSpot();
     }
     if (introScene.active) introScene.update(dt);
-    player.update(dt, noInput, collision);
+    player.update(dt, noInput, gameScreen.collision);    
     animator.update(dt, player);
     return;
   }
@@ -372,22 +340,22 @@ function update(dt) {
     if (weapon.fire(player, dx, dy)) animator.onShot();
   }
 
-  player.update(dt, input, collision);
+  player.update(dt, input, gameScreen.collision);
   animator.update(dt, player); // after the move, so it sees the resolved position
 
   // Check after moving and collision, so the position is already resolved.
-  if (hazards.check(player) !== 0) player.die();
+  if (gameScreen.hazards.check(player) !== 0) player.die();
 
   // Boss trigger: start the scripted scene the moment the player steps into the zone.
-  if (bossZone !== null && !player.dead) {
-    const inside = level.overlapsZone('boss_trigger', player);
-    if (inside && !wasInsideBossZone) {
+  if (gameScreen.bossZone !== null && !player.dead) {
+    const inside = gameScreen.level.overlapsZone('boss_trigger', player);
+    if (inside && !gameScreen.wasInsideBossZone) {
       grabScene.start();
       trackGrabSpot(); // where the hand will come out of the ground
       preloadNextLevel(); // load the next level while the scene plays
     }
-    wasInsideBossZone = inside;
-  }
+    gameScreen.wasInsideBossZone = inside;
+  }  
 }
 
 /** Load one image and wait until it can be drawn. */
@@ -450,6 +418,7 @@ const bossBackdrop = bossStrip === null ? null : new BossBackdrop(ctx, bossStrip
 
 /** Draw the scene. alpha is the fraction of a step left in the accumulator. */
 function render(alpha) {
+  const { map, level, tilesetImage, bossZone, theme, background, parallax, hasBoss } = gameScreen; // read-only for this frame
   // Follow the interpolated player position so the camera does not jitter.
   const px = player.prevX + (player.x - player.prevX) * alpha + player.width / 2;
   const py = player.prevY + (player.y - player.prevY) * alpha + player.height / 2;
@@ -600,6 +569,6 @@ function render(alpha) {
 
 const tuningPanel = new TuningPanel(); // remembers start-up values for the Reset button
 tuningPanel.mount(); // press P in the game to show or hide it
-if (hasBoss) startIntro(); // useful when the game starts directly in a boss level (for testing)
+if (gameScreen.hasBoss) startIntro(); // useful when the game starts directly in a boss level (for testing)
 const game = new Game({ update, render });
 game.start();
