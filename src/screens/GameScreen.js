@@ -8,6 +8,9 @@
  *
  * Complexity: each draw method is O(1); memory O(1).
  */
+import { CONFIG } from '../config.js';
+import { castRay, createRayHit } from '../physics/Raycast.js';
+
 export class GameScreen {
   /**
    * @param {CanvasRenderingContext2D} ctx main 2D context
@@ -16,6 +19,7 @@ export class GameScreen {
   constructor(ctx, canvas) {
     this.ctx = ctx;
     this.canvas = canvas;
+    this.aimHit = createRayHit(); // reused every frame, so aiming allocates nothing
   }
 
   /**
@@ -61,5 +65,81 @@ export class GameScreen {
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#3b2a14';
     ctx.stroke();
+  }
+  
+  /**
+   * Debug view: the level's zones in blue and the player's hitbox in green (world space).
+   * The caller decides whether to call it (the Z toggle stays in main.js for now).
+   * @param {{zones: Array<{x:number,y:number,width:number,height:number}>}} level
+   * @param {{x:number, y:number, width:number, height:number}} player
+   */
+  drawZones(level, player) {
+    const ctx = this.ctx;
+    ctx.lineWidth = 1;
+    ctx.fillStyle = 'rgba(80, 200, 255, 0.25)';
+    ctx.strokeStyle = 'rgba(80, 200, 255, 0.9)';
+    for (let i = 0; i < level.zones.length; i++) {
+      const z = level.zones[i];
+      ctx.fillRect(z.x, z.y, z.width, z.height);
+      ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.width - 1, z.height - 1);
+    }
+    ctx.strokeStyle = 'rgba(120, 255, 120, 0.9)';
+    ctx.strokeRect(Math.round(player.x) + 0.5, Math.round(player.y) + 0.5, player.width, player.height);
+  }
+
+  /**
+   * Draw the gun turning around the hand toward the aim angle (world space).
+   * @param {HTMLImageElement} gunSprite the caller checks it is not null
+   * @param {{gunKick:number}} animator provides the recoil slide of the gun
+   * @param {number} handX world x of the hand (whole pixels)
+   * @param {number} handY world y of the hand (whole pixels)
+   * @param {number} angle aim direction in radians
+   */
+  drawGun(gunSprite, animator, handX, handY, angle) {
+    const ctx = this.ctx;
+    const g = CONFIG.gun;
+    ctx.save();
+    ctx.translate(handX, handY);
+    ctx.rotate(angle);
+    ctx.translate(-Math.round(animator.gunKick), 0); // kick: slide back along the barrel
+    // Aiming left, a plain rotation would turn the gun upside down: mirror it
+    // across the barrel axis so the stock stays below the barrel.
+    if (Math.cos(angle) < 0) ctx.scale(1, -1);
+    ctx.drawImage(gunSprite, -g.pivotX, -g.pivotY);
+    ctx.restore();
+  }
+
+  /**
+   * Aim line from the barrel end to the first wall (or max range), world space.
+   * Starts at the same hand position and angle as the gun picture, so it
+   * stays glued to the gun while flying fast.
+   * @param {import('../level/TileMap.js').TileMap} map used to find where the ray ends
+   * @param {number} ox world x of the hand (the interpolated one used to draw the gun)
+   * @param {number} oy world y of the hand
+   * @param {number} angle aim direction in radians
+   */
+  drawAim(map, ox, oy, angle) {
+    const ctx = this.ctx;
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+
+    const range = CONFIG.weapon.range;
+    const hit = castRay(map, ox, oy, ux, uy, range, this.aimHit);
+    const dist = hit ? this.aimHit.distance : range;
+
+    // Start at the barrel end, but never past the wall.
+    const start = Math.min(CONFIG.gun.muzzleLength, dist);
+
+    ctx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ox + ux * start, oy + uy * start);
+    ctx.lineTo(ox + ux * dist, oy + uy * dist);
+    ctx.stroke();
+
+    if (hit) {
+      ctx.fillStyle = '#ff5050';
+      ctx.fillRect(ox + ux * dist - 3, oy + uy * dist - 3, 6, 6); // dot where the ray meets the wall
+    }
   }
 }
